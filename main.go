@@ -7,12 +7,10 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-var Version = "v1.0.0"
-
 func main() {
 	app := cli.NewApp()
 	app.Usage = "switch version"
-	app.Version = Version
+	app.Version = "v1.0.0"
 	app.EnableBashCompletion = true
 	app.Flags = []cli.Flag{}
 	app.Commands = []*cli.Command{
@@ -30,6 +28,18 @@ func main() {
 	}
 }
 
-func List(c *cli.Context) error {
-	return nil
+func List(c *cli.Context) (err error) {
+	if err := runApp(c); err != nil {
+		return cli.Exit(err, 1)
+	}
+	return
+}
+
+func runApp(c *cli.Context) (err error) {
+	a := newApp()
+	err = a.Start()
+	if err != nil {
+		return err
+	}
+	return
 }
