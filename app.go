@@ -6,6 +6,9 @@ import (
 	"net/http"
 )
 
+// "https://go.dev/dl"
+const baseUrl = "https://studygolang.com/dl"
+
 type app struct{}
 
 func newApp() *app {
@@ -38,6 +41,12 @@ func (a *app) selectVersion() (err error) {
 		return err
 	}
 	fmt.Println(target)
+
+	v := NewVersion(baseUrl, target)
+	err = v.download()
+	if err != nil {
+		return
+	}
 	return
 }
 
