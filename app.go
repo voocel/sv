@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"github.com/AlecAivazis/survey/v2"
 	"net/http"
 )
@@ -26,13 +25,13 @@ func (a *app) Start() (err error) {
 
 func (a *app) selectVersion() (err error) {
 	var target string
-	resp, err := http.Get("https://go.dev/dl")
+	resp, err := http.Get(baseUrl)
 	if err != nil {
 		return
 	}
+
 	parser := NewParser(resp.Body)
 	versions := parser.ArchivedVersions()
-
 	err = survey.AskOne(&survey.Select{
 		Message: "Choose a version:",
 		Options: versions,
@@ -40,7 +39,7 @@ func (a *app) selectVersion() (err error) {
 	if err != nil {
 		return err
 	}
-	fmt.Println(target)
+	//target = "go1.18"
 
 	v := NewVersion(baseUrl, target)
 	err = v.download()

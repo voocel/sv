@@ -38,7 +38,7 @@ func (v *Version) download() error {
 		return err
 	}
 	filename := path.Base(uri.Path)
-	log.Println("[*] Filename " + filename)
+	log.Println("[*] filename " + filename)
 
 	client := http.DefaultClient
 	request, err := http.NewRequest("GET", rawUrl, nil)
@@ -50,12 +50,14 @@ func (v *Version) download() error {
 	if err != nil {
 		return err
 	}
-	if resp.ContentLength <= 0 {
+	total := resp.ContentLength
+	if total == 0 {
 		log.Println("[*] Destination server does not support breakpoint download.")
 	}
 	defer resp.Body.Close()
 
 	reader := bufio.NewReader(resp.Body)
+
 	file, err := os.Create(filename)
 	if err != nil {
 		return err
@@ -63,14 +65,14 @@ func (v *Version) download() error {
 	writer := bufio.NewWriter(file)
 	buf := make([]byte, 1024)
 
-	written := 0
+	var written int64
 	go func() {
 		for {
 			nr, errR := reader.Read(buf)
 			if nr > 0 {
 				nw, errW := writer.Write(buf[0:nr])
 				if nw > 0 {
-					written += nw
+					written += int64(nw)
 				}
 				if errW != nil {
 					err = errW
@@ -87,37 +89,30 @@ func (v *Version) download() error {
 				}
 				break
 			}
-
 		}
 	}()
 
-	spaceTime := time.Second * 1
+	var lastWtn int64
+	spaceTime := time.Second
 	ticker := time.NewTicker(spaceTime)
-	//last read data size
-	lastWtn := 0
-	stop := false
-
+	bar := NewInt(total)
 	for {
 		select {
 		case <-ticker.C:
-			//file size read this time - data size read last time = speed
-			speed := written - lastWtn
-			log.Printf("[*] Speed %s / %s \n", bytesToSize(speed), spaceTime.String())
-			if written-lastWtn == 0 {
+			speed := bytesToSize(written - lastWtn)
+			if total == lastWtn {
 				ticker.Stop()
-				stop = true
-				break
+				return err
 			}
 			lastWtn = written
-		}
-		if stop {
-			break
+			bar.ValueInt(lastWtn)
+			bar.Speed(speed + "/" + spaceTime.String())
+			bar.WriteTo(os.Stdout)
 		}
 	}
-	return err
 }
 
-func bytesToSize(length int) string {
+func bytesToSize(length int64) string {
 	var k = 1024
 	var sizes = []string{"Bytes", "KB", "MB", "GB", "TB"}
 	if length == 0 {

@@ -13,11 +13,12 @@ func main() {
 	app.Version = "v1.0.0"
 	app.EnableBashCompletion = true
 	app.Flags = []cli.Flag{}
+	app.Action = baseCmd
 	app.Commands = []*cli.Command{
 		{
 			Name:    "list",
 			Usage:   "show all versions",
-			Action:  List,
+			Action:  baseCmd,
 			Aliases: []string{"l"},
 		},
 	}
@@ -28,7 +29,7 @@ func main() {
 	}
 }
 
-func List(c *cli.Context) (err error) {
+func baseCmd(c *cli.Context) (err error) {
 	if err := runApp(c); err != nil {
 		return cli.Exit(err, 1)
 	}
