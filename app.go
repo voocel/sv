@@ -1,8 +1,10 @@
 package main
 
 import (
-	"github.com/AlecAivazis/survey/v2"
 	"net/http"
+	"runtime"
+
+	"github.com/AlecAivazis/survey/v2"
 )
 
 // "https://go.dev/dl"
@@ -39,13 +41,13 @@ func (a *app) selectVersion() (err error) {
 	if err != nil {
 		return err
 	}
-	//target = "go1.18"
 
-	v := NewVersion(baseUrl, target)
-	err = v.download()
+	d := NewDownloader(runtime.NumCPU())
+	err = d.Download("https://studygolang.com/dl/golang/go1.18.1.darwin-amd64.tar.gz", "go1.18.1.darwin-amd64.tar.gz")
 	if err != nil {
-		return
+		return err
 	}
+
 	return
 }
 

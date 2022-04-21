@@ -12,15 +12,22 @@ func main() {
 	app.Usage = "switch version"
 	app.Version = "v1.0.0"
 	app.EnableBashCompletion = true
-	app.Flags = []cli.Flag{}
+	app.Flags = []cli.Flag{
+		&cli.StringFlag{
+			Name:     "sv",
+			Aliases:  []string{"s"},
+			Usage:    "input a specific version",
+			Required: false,
+		},
+	}
 	app.Action = baseCmd
 	app.Commands = []*cli.Command{
-		{
-			Name:    "list",
-			Usage:   "show all versions",
-			Action:  baseCmd,
-			Aliases: []string{"l"},
-		},
+		//{
+		//	Name:    "list",
+		//	Usage:   "show all versions",
+		//	Action:  baseCmd,
+		//	Aliases: []string{"l"},
+		//},
 	}
 
 	err := app.Run(os.Args)

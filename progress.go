@@ -6,22 +6,25 @@ import (
 	"html/template"
 	"io"
 	"math"
+	"os"
+	"strconv"
 	"strings"
+	//github.com/fatih/color
 )
 
 // Bar is a progress bar.
 type Bar struct {
-	StartDelimiter string  // StartDelimiter for the bar ("|")
-	EndDelimiter   string  // EndDelimiter for the bar ("|")
-	Filled         string  // Filled section representation ("█")
-	Empty          string  // Empty section representation ("░")
-	Total          float64 // Total value
-	Width          int     // Width of the bar
+	StartDelimiter string // StartDelimiter for the bar ("|")
+	EndDelimiter   string // EndDelimiter for the bar ("|")
+	Filled         string // Filled section representation ("█")
+	Empty          string // Empty section representation ("░")
+	Width          int    // width of the bar
 
-	value float64
-	tmpl  *template.Template
-	text  string
-	speed string
+	total   float64
+	text    string
+	rate    string
+	current float64
+	tmpl    *template.Template
 }
 
 // NewBar return a new bar with the given total
@@ -31,17 +34,16 @@ func NewBar(total float64) *Bar {
 		EndDelimiter:   "|",
 		Filled:         "█",
 		Empty:          "░",
-		Total:          total,
-		Width:          60,
+		Width:          50,
+		total:          total,
 	}
-
-	b.Template(`{{.Percent | printf "%3.0f"}}% {{.Bar}} {{.Text}} {{.Speed}}`)
+	b.template(`{{.Percent | printf "%3.0f"}}% {{.Bar}} {{.Text}} {{.Speed}} {{.Total}}`)
 
 	return b
 }
 
-// NewInt return a new bar with the given total
-func NewInt(total int64) *Bar {
+// NewBarInt return a new bar with the given total
+func NewBarInt(total int64) *Bar {
 	return NewBar(float64(total))
 }
 
@@ -50,32 +52,22 @@ func (b *Bar) Text(s string) {
 	b.text = s
 }
 
-// Speed set the speed value
-func (b *Bar) Speed(s string) {
-	b.speed = s
+// Rate set the speed value
+func (b *Bar) Rate(s string) {
+	b.rate = s
 }
 
-// Value set the value
-func (b *Bar) Value(n float64) {
-	if n > b.Total {
-		panic("Bar update value cannot be greater than the total")
+// Add the specified amount to the progressbar
+func (b *Bar) Add(n float64) {
+	b.current += n
+	if b.current > b.total {
+		panic("cannot be greater than the total")
 	}
-	b.value = n
-}
-
-// ValueInt set the value
-func (b *Bar) ValueInt(n int64) {
-	b.Value(float64(n))
-}
-
-// percent return the percentage
-func (b *Bar) percent() float64 {
-	return (b.value / b.Total) * 100
 }
 
 // Bar return the progress bar string
 func (b *Bar) bar() string {
-	p := b.value / b.Total
+	p := b.current / b.total
 	filled := math.Ceil(float64(b.Width) * p)
 	empty := math.Floor(float64(b.Width) - filled)
 	s := b.StartDelimiter
@@ -85,26 +77,21 @@ func (b *Bar) bar() string {
 	return s
 }
 
-// String return the progress bar
-func (b *Bar) String() string {
+// string return the progress bar
+func (b *Bar) string() string {
 	var buf bytes.Buffer
 	data := struct {
-		Value          float64
-		Total          float64
-		Percent        float64
-		StartDelimiter string
-		EndDelimiter   string
-		Bar            string
-		Text           string
-		Speed          string
+		Percent float64
+		Bar     string
+		Text    string
+		Rate    string
+		Total   string
 	}{
-		Value:          b.value,
-		Percent:        b.percent(),
-		StartDelimiter: b.StartDelimiter,
-		EndDelimiter:   b.EndDelimiter,
-		Bar:            b.bar(),
-		Text:           b.text,
-		Speed:          b.speed,
+		Percent: b.percent(),
+		Bar:     b.bar(),
+		Text:    b.text,
+		Rate:    b.rate,
+		Total:   b.bytesToSize(int64(b.current)) + "/" + b.bytesToSize(int64(b.total)),
 	}
 
 	if err := b.tmpl.Execute(&buf, data); err != nil {
@@ -114,19 +101,43 @@ func (b *Bar) String() string {
 	return buf.String()
 }
 
-// WriteTo write the progress bar to w
-func (b *Bar) WriteTo(w io.Writer) (int64, error) {
-	s := fmt.Sprintf("\r   %s ", b.String())
-	_, err := io.WriteString(w, s)
-	return int64(len(s)), err
+// percent return the percentage
+func (b *Bar) percent() float64 {
+	return (b.current / b.total) * 100
 }
 
 // Template for rendering. This method will panic if the template fails to parse
-func (b *Bar) Template(s string) {
+func (b *Bar) template(s string) {
 	t, err := template.New("").Parse(s)
 	if err != nil {
 		panic(err)
 	}
-
 	b.tmpl = t
+}
+
+// WriteTo write the progress bar to io.Writer
+func (b *Bar) WriteTo(w io.Writer) (int64, error) {
+	s := fmt.Sprintf("\r   %s ", b.string())
+	_, err := io.WriteString(w, s)
+	return int64(len(s)), err
+}
+
+// Write implement io.Writer
+func (b *Bar) Write(bytes []byte) (n int, err error) {
+	n = len(bytes)
+	b.Add(float64(n))
+	b.WriteTo(os.Stdout)
+	return
+}
+
+// bytesToSize format bytes to string
+func (b *Bar) bytesToSize(bytes int64) string {
+	var k = 1024
+	var sizes = []string{"Bytes", "KB", "MB", "GB", "TB"}
+	if bytes == 0 {
+		return "0 Bytes"
+	}
+	i := math.Floor(math.Log(float64(bytes)) / math.Log(float64(k)))
+	r := float64(bytes) / math.Pow(float64(k), i)
+	return strconv.FormatFloat(r, 'f', 2, 64) + sizes[int(i)]
 }
