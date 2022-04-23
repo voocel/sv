@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -39,11 +40,10 @@ func (d *Downloader) Download(strURL, filename string) error {
 }
 
 func (d *Downloader) multiDownload(strURL, filename string, contentLen int64) error {
-	d.bar = NewBarInt(contentLen)
-
+	d.bar = NewBar(contentLen)
 	partSize := int(contentLen) / d.concurrency
 	partDir := d.getPartDir(filename)
-	err := os.Mkdir(partDir, 0777)
+	err := os.MkdirAll(partDir, 0777)
 	if err != nil {
 		return err
 	}
@@ -51,7 +51,6 @@ func (d *Downloader) multiDownload(strURL, filename string, contentLen int64) er
 
 	var wg sync.WaitGroup
 	wg.Add(d.concurrency)
-
 	rangeStart := 0
 	for i := 0; i < d.concurrency; i++ {
 		go func(i, rangeStart int) {
@@ -65,7 +64,7 @@ func (d *Downloader) multiDownload(strURL, filename string, contentLen int64) er
 			downloaded := 0
 			if d.resume {
 				partFileName := d.getPartFilename(filename, i)
-				content, err := os.ReadFile(partFileName)
+				content, err := ioutil.ReadFile(partFileName)
 				if err == nil {
 					downloaded = len(content)
 				}
@@ -87,7 +86,7 @@ func (d *Downloader) singleDownload(strURL, filename string) error {
 		return err
 	}
 	defer resp.Body.Close()
-	d.bar = NewBarInt(resp.ContentLength)
+	d.bar = NewBar(resp.ContentLength)
 
 	f, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
@@ -96,7 +95,7 @@ func (d *Downloader) singleDownload(strURL, filename string) error {
 	//wt := bufio.NewWriter(f)
 	defer f.Close()
 
-	buf := make([]byte, 1*1024)
+	buf := make([]byte, 64*1024)
 	_, err = io.CopyBuffer(io.MultiWriter(f, d.bar), resp.Body, buf)
 	//wt.Flush()
 	return err
@@ -141,11 +140,11 @@ func (d *Downloader) downloadPartial(strURL, filename string, rangeStart, rangeE
 }
 
 func (d *Downloader) merge(filename string) error {
-	destFile, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0666)
+	dstFile, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
 		return err
 	}
-	defer destFile.Close()
+	defer dstFile.Close()
 
 	for i := 0; i < d.concurrency; i++ {
 		partFileName := d.getPartFilename(filename, i)
@@ -153,7 +152,7 @@ func (d *Downloader) merge(filename string) error {
 		if err != nil {
 			return err
 		}
-		io.Copy(destFile, partFile)
+		io.Copy(dstFile, partFile)
 		partFile.Close()
 		os.Remove(partFileName)
 	}
