@@ -95,7 +95,7 @@ func (d *Downloader) singleDownload(strURL, filename string) error {
 	//wt := bufio.NewWriter(f)
 	defer f.Close()
 
-	buf := make([]byte, 64*1024)
+	buf := make([]byte, 32*1024)
 	_, err = io.CopyBuffer(io.MultiWriter(f, d.bar), resp.Body, buf)
 	//wt.Flush()
 	return err

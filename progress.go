@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 	//github.com/fatih/color
 )
 
@@ -22,6 +23,7 @@ type Bar struct {
 
 	text    string
 	rate    string
+	prev    int64
 	current int64
 	total   int64
 	tmpl    *template.Template
@@ -34,12 +36,27 @@ func NewBar(total int64) *Bar {
 		EndDelimiter:   "|",
 		Filled:         "█",
 		Empty:          "░",
-		Width:          50,
+		Width:          40,
 		total:          total,
 	}
+	go b.startRate()
 	b.template(`{{.Percent | printf "%3.0f"}}% {{.Bar}} {{.Total}} {{.Rate}} {{.Text}}`)
 
 	return b
+}
+
+// startRate start the speed
+func (b *Bar) startRate() {
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case <-tick.C:
+			r := b.current - b.prev
+			b.rate = "[" + b.bytesToSize(r) + "/s]"
+			b.prev = b.current
+		}
+	}
 }
 
 // template for rendering. This method will panic if the template fails to parse
@@ -54,11 +71,6 @@ func (b *Bar) template(s string) {
 // Text set the text value
 func (b *Bar) Text(s string) {
 	b.text = s
-}
-
-// Rate set the speed value
-func (b *Bar) Rate(s string) {
-	b.rate = s
 }
 
 // Add the specified amount to the progressbar

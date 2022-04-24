@@ -18,16 +18,21 @@ func main() {
 			Aliases:  []string{"s"},
 			Usage:    "input a specific version",
 			Required: false,
+		}, &cli.StringFlag{
+			Name:     "remote",
+			Aliases:  []string{"r"},
+			Usage:    "input a specific version",
+			Required: false,
 		},
 	}
 	app.Action = baseCmd
 	app.Commands = []*cli.Command{
-		//{
-		//	Name:    "list",
-		//	Usage:   "show all versions",
-		//	Action:  baseCmd,
-		//	Aliases: []string{"l"},
-		//},
+		{
+			Name:    "list",
+			Usage:   "show all local versions",
+			Action:  baseCmd,
+			Aliases: []string{"ls"},
+		},
 	}
 
 	err := app.Run(os.Args)
