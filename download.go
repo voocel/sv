@@ -7,7 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path"
+	"path/filepath"
 	"strings"
 	"sync"
 )
@@ -24,7 +24,7 @@ func NewDownloader(concurrency int) *Downloader {
 
 func (d *Downloader) Download(strURL, filename string) error {
 	if filename == "" {
-		filename = path.Base(strURL)
+		filename = filepath.Base(strURL)
 	}
 
 	resp, err := http.Head(strURL)
@@ -129,7 +129,7 @@ func (d *Downloader) downloadPartial(strURL, filename string, rangeStart, rangeE
 	}
 	defer partFile.Close()
 
-	buf := make([]byte, 64*1024)
+	buf := make([]byte, 32*1024)
 	_, err = io.CopyBuffer(io.MultiWriter(partFile, d.bar), resp.Body, buf)
 	if err != nil {
 		if err == io.EOF {
@@ -140,7 +140,7 @@ func (d *Downloader) downloadPartial(strURL, filename string, rangeStart, rangeE
 }
 
 func (d *Downloader) merge(filename string) error {
-	dstFile, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0666)
+	dstFile, err := os.OpenFile(downloadsDir+"/"+filename, os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
 		return err
 	}
@@ -161,7 +161,7 @@ func (d *Downloader) merge(filename string) error {
 }
 
 func (d *Downloader) getPartDir(filename string) string {
-	return strings.SplitN(filename, ".", 2)[0]
+	return downloadsDir + "/" + strings.SplitN(filepath.Base(filename), ".", 2)[0]
 }
 
 func (d *Downloader) getPartFilename(filename string, partNum int) string {

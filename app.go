@@ -1,14 +1,16 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"runtime"
+	"strings"
 
 	"github.com/AlecAivazis/survey/v2"
 )
 
 // "https://go.dev/dl"
-const baseUrl = "https://studygolang.com/dl"
+const baseUrl = "https://studygolang.com"
 
 type app struct{}
 
@@ -27,13 +29,18 @@ func (a *app) Start() (err error) {
 
 func (a *app) selectVersion() (err error) {
 	var target string
-	resp, err := http.Get(baseUrl)
+	resp, err := http.Get(baseUrl + "/dl")
 	if err != nil {
 		return
 	}
 
 	parser := NewParser(resp.Body)
-	versions := parser.ArchivedVersions()
+	archive := parser.Archived()
+	versions := make([]string, 0)
+	for name := range archive {
+		versions = append(versions, name)
+	}
+
 	err = survey.AskOne(&survey.Select{
 		Message: "Choose a version:",
 		Options: versions,
@@ -42,13 +49,33 @@ func (a *app) selectVersion() (err error) {
 		return err
 	}
 
-	d := NewDownloader(runtime.NumCPU())
-	err = d.Download("https://studygolang.com/dl/golang/go1.18.1.darwin-amd64.tar.gz", "go1.18.1.darwin-amd64.tar.gz")
-	if err != nil {
-		return err
+	targetPkg := a.getPackage(target, archive)
+	if targetPkg == nil {
+		return fmt.Errorf("not fount package: %s", target)
+	}
+
+	if Exists(downloadsDir + "/" + targetPkg.Name) {
+		//if err := targetPkg.CheckSum(); err != nil {
+		//	return err
+		//}
+		if err = targetPkg.install(); err != nil {
+			return err
+		}
+	} else {
+		targetPkg.Download()
 	}
 
 	return
+}
+
+func (a *app) getPackage(target string, m map[string]*Version) *Package {
+	for _, v := range m[target].Packages {
+		filename := fmt.Sprintf("%s.%s-%s.tar.gz", target, runtime.GOOS, runtime.GOARCH)
+		if strings.HasPrefix(v.Name, filename) {
+			return v
+		}
+	}
+	return nil
 }
 
 func surveyIcons() survey.AskOpt {
