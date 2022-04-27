@@ -27,6 +27,7 @@ type Bar struct {
 	current int64
 	total   int64
 	tmpl    *template.Template
+	done    chan struct{}
 }
 
 // NewBar return a new bar with the given total
@@ -38,15 +39,16 @@ func NewBar(total int64) *Bar {
 		Empty:          "░",
 		Width:          40,
 		total:          total,
+		done:           make(chan struct{}),
 	}
-	go b.startRate()
+	go b.listenRate()
 	b.template(`{{.Percent | printf "%3.0f"}}% {{.Bar}} {{.Total}} {{.Rate}} {{.Text}}`)
 
 	return b
 }
 
-// startRate start the speed
-func (b *Bar) startRate() {
+// listenRate start listen the speed
+func (b *Bar) listenRate() {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	for {
@@ -55,6 +57,9 @@ func (b *Bar) startRate() {
 			r := b.current - b.prev
 			b.rate = "[" + b.bytesToSize(r) + "/s]"
 			b.prev = b.current
+		case <-b.done:
+			close(b.done)
+			return
 		}
 	}
 }
@@ -152,4 +157,9 @@ func (b *Bar) bytesToSize(bytes int64) string {
 	i := math.Floor(math.Log(float64(bytes)) / math.Log(float64(k)))
 	r := float64(bytes) / math.Pow(float64(k), i)
 	return strconv.FormatFloat(r, 'f', 2, 64) + sizes[int(i)]
+}
+
+// Close the rate listen
+func (b *Bar) Close() {
+	b.done <- struct{}{}
 }

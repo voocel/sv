@@ -97,6 +97,7 @@ func (d *Downloader) singleDownload(strURL, filename string) error {
 
 	buf := make([]byte, 32*1024)
 	_, err = io.CopyBuffer(io.MultiWriter(f, d.bar), resp.Body, buf)
+	d.bar.Close()
 	//wt.Flush()
 	return err
 }
@@ -137,10 +138,11 @@ func (d *Downloader) downloadPartial(strURL, filename string, rangeStart, rangeE
 		}
 		log.Fatal(err)
 	}
+	d.bar.Close()
 }
 
 func (d *Downloader) merge(filename string) error {
-	dstFile, err := os.OpenFile(downloadsDir+"/"+filename, os.O_CREATE|os.O_WRONLY, 0666)
+	dstFile, err := os.OpenFile(svDownload+"/"+filename, os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
 		return err
 	}
@@ -161,7 +163,7 @@ func (d *Downloader) merge(filename string) error {
 }
 
 func (d *Downloader) getPartDir(filename string) string {
-	return downloadsDir + "/" + strings.SplitN(filepath.Base(filename), ".", 2)[0]
+	return svDownload + "/" + strings.SplitN(filepath.Base(filename), ".", 2)[0]
 }
 
 func (d *Downloader) getPartFilename(filename string, partNum int) string {
