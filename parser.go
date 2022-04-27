@@ -19,8 +19,8 @@ func NewParser(reader io.Reader) *Parser {
 }
 
 // Archived return all archived versions
-func (p *Parser) Archived() (result map[string]*Version) {
-	result = make(map[string]*Version)
+func (p *Parser) Archived() map[string]*Version {
+	result := make(map[string]*Version)
 	p.doc.Find("#archive").Find("div.toggle").Each(func(i int, selection *goquery.Selection) {
 		version, ok := selection.Attr("id")
 		if !ok {
@@ -32,12 +32,13 @@ func (p *Parser) Archived() (result map[string]*Version) {
 			Packages: p.findPackages(version, selection),
 		}
 	})
-	return
+	return result
 }
 
 // Stable return all Stable versions
-func (p *Parser) Stable() (result map[string]*Version) {
-	p.doc.Find("#stable").Find("div.toggle").Each(func(i int, selection *goquery.Selection) {
+func (p *Parser) Stable() map[string]*Version {
+	result := make(map[string]*Version)
+	p.doc.Find("#stable").NextUntil(".toggleVisible").Each(func(i int, selection *goquery.Selection) {
 		version, ok := selection.Attr("id")
 		if !ok {
 			return
@@ -45,10 +46,10 @@ func (p *Parser) Stable() (result map[string]*Version) {
 
 		result[version] = &Version{
 			Name:     version,
-			Packages: p.findPackages(version, selection),
+			Packages: p.findPackages(version, selection.Find("table").First()),
 		}
 	})
-	return
+	return result
 }
 
 // AllVersions return all all versions

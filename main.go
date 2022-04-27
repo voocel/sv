@@ -9,10 +9,10 @@ import (
 )
 
 var (
-	rootDir      string
-	downloadsDir string
-	versionsDir  string
-	goroot       string
+	svHome     string
+	svDownload string
+	svRelease  string
+	svRoot     string
 )
 
 func main() {
@@ -47,14 +47,14 @@ func main() {
 		if err != nil {
 			return
 		}
-		rootDir = filepath.Join(homeDir, ".sv")
-		goroot = filepath.Join(rootDir, "go")
-		downloadsDir = filepath.Join(rootDir, "downloads")
-		if err = os.MkdirAll(downloadsDir, 0755); err != nil {
+		svHome = filepath.Join(homeDir, ".sv")
+		svRoot = filepath.Join(svHome, "go")
+		svDownload = filepath.Join(svHome, "downloads")
+		svRelease = filepath.Join(svHome, "uncompressed")
+		if err = os.MkdirAll(svDownload, 0755); err != nil {
 			return err
 		}
-		versionsDir = filepath.Join(rootDir, "versions")
-		if err = os.MkdirAll(versionsDir, 0755); err != nil {
+		if err = os.MkdirAll(svRelease, 0755); err != nil {
 			return err
 		}
 		return

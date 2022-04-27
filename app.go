@@ -35,7 +35,7 @@ func (a *app) selectVersion() (err error) {
 	}
 
 	parser := NewParser(resp.Body)
-	archive := parser.Archived()
+	archive := parser.Stable()
 	versions := make([]string, 0)
 	for name := range archive {
 		versions = append(versions, name)
@@ -48,13 +48,13 @@ func (a *app) selectVersion() (err error) {
 	if err != nil {
 		return err
 	}
-
+	// target = "go1.18"
 	targetPkg := a.getPackage(target, archive)
 	if targetPkg == nil {
 		return fmt.Errorf("not fount package: %s", target)
 	}
 
-	if Exists(downloadsDir + "/" + targetPkg.Name) {
+	if Exists(svDownload + "/" + targetPkg.Name) {
 		//if err := targetPkg.CheckSum(); err != nil {
 		//	return err
 		//}
@@ -69,8 +69,12 @@ func (a *app) selectVersion() (err error) {
 }
 
 func (a *app) getPackage(target string, m map[string]*Version) *Package {
+	ext := ".tar.gz"
+	if runtime.GOOS == "windows" {
+		ext = ".zip"
+	}
 	for _, v := range m[target].Packages {
-		filename := fmt.Sprintf("%s.%s-%s.tar.gz", target, runtime.GOOS, runtime.GOARCH)
+		filename := fmt.Sprintf("%s.%s-%s%s", target, runtime.GOOS, runtime.GOARCH, ext)
 		if strings.HasPrefix(v.Name, filename) {
 			return v
 		}
