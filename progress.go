@@ -49,16 +49,15 @@ func NewBar(total int64) *Bar {
 
 // listenRate start listen the speed
 func (b *Bar) listenRate() {
-	tick := time.NewTicker(time.Second)
+	tick := time.NewTicker(time.Second / 10)
 	defer tick.Stop()
 	for {
 		select {
 		case <-tick.C:
 			r := b.current - b.prev
-			b.rate = "[" + b.bytesToSize(r) + "/s]"
+			b.rate = "[" + b.bytesToSize(r*10) + "/s]"
 			b.prev = b.current
 		case <-b.done:
-			close(b.done)
 			return
 		}
 	}
@@ -89,6 +88,9 @@ func (b *Bar) Add(n int64) {
 // string return the progress bar
 func (b *Bar) string() string {
 	var buf bytes.Buffer
+	if b.rate == "" {
+		b.rate = "[" + b.bytesToSize(0) + "/s]"
+	}
 	data := struct {
 		Percent float64
 		Bar     string
@@ -134,7 +136,7 @@ func (b *Bar) bar() string {
 
 // Render write the progress bar to io.Writer
 func (b *Bar) Render(w io.Writer) int64 {
-	s := fmt.Sprintf("\r   %s ", b.string())
+	s := fmt.Sprintf("\x1bM\r   %s ", b.string())
 	io.WriteString(w, s)
 	return int64(len(s))
 }
@@ -161,5 +163,5 @@ func (b *Bar) bytesToSize(bytes int64) string {
 
 // Close the rate listen
 func (b *Bar) Close() {
-	b.done <- struct{}{}
+	close(b.done)
 }

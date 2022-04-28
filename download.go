@@ -41,6 +41,8 @@ func (d *Downloader) Download(strURL, filename string) error {
 
 func (d *Downloader) multiDownload(strURL, filename string, contentLen int64) error {
 	d.bar = NewBar(contentLen)
+	defer d.bar.Close()
+
 	partSize := int(contentLen) / d.concurrency
 	partDir := d.getPartDir(filename)
 	err := os.MkdirAll(partDir, 0777)
@@ -138,7 +140,6 @@ func (d *Downloader) downloadPartial(strURL, filename string, rangeStart, rangeE
 		}
 		log.Fatal(err)
 	}
-	d.bar.Close()
 }
 
 func (d *Downloader) merge(filename string) error {
