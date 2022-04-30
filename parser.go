@@ -38,7 +38,7 @@ func (p *Parser) Archived() map[string]*Version {
 // Stable return all Stable versions
 func (p *Parser) Stable() map[string]*Version {
 	result := make(map[string]*Version)
-	p.doc.Find("#stable").NextUntil(".toggleVisible").Each(func(i int, selection *goquery.Selection) {
+	p.doc.Find("#stable").NextUntil("#archive,#unstable").Each(func(i int, selection *goquery.Selection) {
 		version, ok := selection.Attr("id")
 		if !ok {
 			return

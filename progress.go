@@ -37,7 +37,7 @@ func NewBar(total int64) *Bar {
 		EndDelimiter:   "|",
 		Filled:         "█",
 		Empty:          "░",
-		Width:          40,
+		Width:          60,
 		total:          total,
 		done:           make(chan struct{}),
 	}
