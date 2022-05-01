@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"runtime"
+	"sort"
 	"strings"
 
 	"github.com/AlecAivazis/survey/v2"
@@ -35,11 +36,12 @@ func (a *app) selectVersion() (err error) {
 	}
 
 	parser := NewParser(resp.Body)
-	archive := parser.Stable()
+	archive := parser.AllVersions()
 	versions := make([]string, 0)
 	for name := range archive {
 		versions = append(versions, name)
 	}
+	sort.Sort(sortVersion(versions))
 
 	err = survey.AskOne(&survey.Select{
 		Message: "Choose a version:",
