@@ -10,9 +10,9 @@ import (
 
 var (
 	svHome     string
-	svDownload string
-	svRelease  string
 	svRoot     string
+	svCache    string
+	svDownload string
 )
 
 func main() {
@@ -40,6 +40,10 @@ func main() {
 			Usage:   "show all local versions",
 			Action:  baseCmd,
 			Aliases: []string{"ls"},
+		}, {
+			Name:    "use",
+			Usage:   "switch local versions",
+			Action:  baseCmd,
 		},
 	}
 	app.Before = func(context *cli.Context) (err error) {
@@ -47,14 +51,14 @@ func main() {
 		if err != nil {
 			return
 		}
-		svHome = filepath.Join(homeDir, ".sv")
+		svHome = filepath.Join(homeDir, "sv")
 		svRoot = filepath.Join(svHome, "go")
 		svDownload = filepath.Join(svHome, "downloads")
-		svRelease = filepath.Join(svHome, "uncompressed")
+		svCache = filepath.Join(svHome, "cache")
 		if err = os.MkdirAll(svDownload, 0755); err != nil {
 			return err
 		}
-		if err = os.MkdirAll(svRelease, 0755); err != nil {
+		if err = os.MkdirAll(svCache, 0755); err != nil {
 			return err
 		}
 		return
@@ -74,7 +78,11 @@ func baseCmd(c *cli.Context) (err error) {
 }
 
 func runApp(c *cli.Context) (err error) {
-	a := newApp()
+	opts := &startOpts{
+		cmd: c.Command.Name,
+		target: c.Args().First(),
+	}
+	a := newApp(opts)
 	err = a.Start()
 	if err != nil {
 		return err

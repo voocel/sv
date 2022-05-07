@@ -73,12 +73,9 @@ type Package struct {
 	Algorithm string
 }
 
-func (p *Package) Download() {
+func (p *Package) Download() error {
 	d := NewDownloader(runtime.NumCPU())
-	err := d.Download(baseUrl+p.URL, p.Name)
-	if err != nil {
-		panic(err)
-	}
+	return d.Download(baseUrl+p.URL, p.Name)
 }
 
 func (p *Package) CheckSum() (err error) {
@@ -110,12 +107,11 @@ func (p *Package) CheckSum() (err error) {
 
 func (p *Package) install() (err error) {
 	srcPath := svDownload + "/" + p.Name
-	if !Exists(filepath.Join(svRelease, p.Tag)) {
-		if err = Extract(svRelease, srcPath); err != nil {
+	if !Exists(filepath.Join(svCache, p.Tag)) {
+		if err = Extract(svCache, srcPath); err != nil {
 			return err
 		}
-
-		if err = os.Rename(filepath.Join(svRelease, "go"), filepath.Join(svRelease, p.Tag)); err != nil {
+		if err = os.Rename(filepath.Join(svCache, "go"), filepath.Join(svCache, p.Tag)); err != nil {
 			return err
 		}
 	}
@@ -123,13 +119,12 @@ func (p *Package) install() (err error) {
 	if err = os.RemoveAll(svRoot); err != nil {
 		return err
 	}
-
-	if err = os.Symlink(filepath.Join(svRelease, p.Tag), svRoot); err != nil {
+	if err = os.Symlink(filepath.Join(svCache, p.Tag), svRoot); err != nil {
 		return err
 	}
 
 	goBin := filepath.Join(svRoot, "bin", "go")
-	cmd := exec.Command(goBin, "env")
+	cmd := exec.Command(goBin, "version")
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -142,6 +137,60 @@ func (p *Package) install() (err error) {
 		os.Exit(1)
 	}
 	return err
+}
+
+func (p *Package) uninstall() {
+
+}
+
+func (p *Package) use() (err error) {
+	if inCache(p.Tag) {
+		return execute(p.Tag)
+	}
+	if inDownload(p.Tag) {
+		if err = Extract(svCache, filepath.Join(svDownload, p.Name)); err != nil {
+			return err
+		}
+		if err = os.Rename(filepath.Join(svCache, "go"), filepath.Join(svCache, p.Tag)); err != nil {
+			return err
+		}
+		return execute(p.Tag)
+	}
+	return 
+}
+
+func execute(tag string) (err error) {
+	if err = os.RemoveAll(svRoot); err != nil {
+		return err
+	}
+	if err = os.Symlink(filepath.Join(svCache, tag), svRoot); err != nil {
+		return err
+	}
+
+	goBin := filepath.Join(svRoot, "bin", "go")
+	cmd := exec.Command(goBin, "version")
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	newPath := filepath.Join(svRoot, "bin")
+	if p := os.Getenv("PATH"); p != "" {
+		newPath += string(filepath.ListSeparator) + p
+	}
+	cmd.Env = setEnv(append(os.Environ(), "GOROOT="+svRoot, "PATH="+newPath))
+	if err := cmd.Run(); err != nil {
+		os.Exit(1)
+	}
+	return
+}
+
+func inDownload(tag string) bool {
+	path := filepath.Join(svDownload, tag)
+	return Exists(path)
+}
+
+func inCache(tag string) bool {
+	path := filepath.Join(svCache, tag)
+	return Exists(path)
 }
 
 func setEnv(env []string) []string {
@@ -163,12 +212,4 @@ func setEnv(env []string) []string {
 		}
 	}
 	return out
-}
-
-func (p *Package) uninstall() {
-
-}
-
-func (p *Package) use() {
-
 }

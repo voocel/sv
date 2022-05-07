@@ -13,19 +13,38 @@ import (
 // "https://go.dev/dl"
 const baseUrl = "https://studygolang.com"
 
-type app struct{}
+type app struct {
+	opts *startOpts
+}
 
-func newApp() *app {
-	return &app{}
+type startOpts struct {
+	cmd string
+	target string
+}
+
+func newApp(opts *startOpts) *app {
+	return &app{
+		opts: opts,
+	}
 }
 
 func (a *app) Start() (err error) {
-	err = a.selectVersion()
-	if err != nil {
-		return err
+	if a.opts.cmd == "" {
+		return a.selectVersion()
+	}
+
+	p := &Package{}
+	switch a.opts.cmd {
+	case "use":
+		p.Tag = a.opts.target
+		p.use()
 	}
 
 	return
+}
+
+func (a *app) use() {
+
 }
 
 func (a *app) selectVersion() (err error) {
@@ -64,7 +83,12 @@ func (a *app) selectVersion() (err error) {
 			return err
 		}
 	} else {
-		targetPkg.Download()
+		if err = targetPkg.Download(); err != nil {
+			return err
+		}
+		if err = targetPkg.install(); err != nil {
+			return err
+		}
 	}
 
 	return

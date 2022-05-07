@@ -1,5 +1,11 @@
 #!/bin/sh
 
+# Pretty Go Version Manager
+#
+# https://github.com/voocel/sv
+#
+# voocel, voocel@gmail.com
+
 set -eu
 
 GOROOT=${GOROOT:-$HOME/.sv/go}
@@ -15,12 +21,12 @@ error_and_abort() {
 print_banner() {
     cat <<-'EOF'
 =================================================
-              ____
-             / ___|_ __ ___   ___
-            | |   | '__/ _ \ / __|
-            | |___| | | (_) | (__
-             \____|_|  \___/ \___|
-
+               ______   _          _
+              / _____|  \ \       / /
+             | |         \ \     / /
+              \______     \ \   / /
+              _______\     \ \ / /
+             |_______/      \ \_/
        ___           _        _ _
       |_ _|_ __  ___| |_ __ _| | | ___ _ __
        | || '_ \/ __| __/ _` | | |/ _ \ '__|
@@ -102,10 +108,29 @@ get_platform () {
 
 main() {
   local release="1.0.0"
-  local os="$(uname -s | awk '{print tolower($0)}')"
-  local oss=`get_os|tr "[A-Z]" "[a-z]"`
+#  local os="$(uname -s | awk '{print tolower($0)}')"
+  local os=`get_os|tr "[A-Z]" "[a-z]"`
   print_banner
-  echo $oss
+  echo $os
+
+  if [ -f ~/.bash_profile ]; then
+        . ~/.bash_profile
+  fi
+
+  if [ -n "$($SHELL -c 'echo $ZSH_VERSION')" ]; then
+    shell_profile="$HOME/.zshrc"
+  elif [ -n "$($SHELL -c 'echo $BASH_VERSION')" ]; then
+    shell_profile="$HOME/.bashrc"
+  elif [ -n "$($SHELL -c 'echo $FISH_VERSION')" ]; then
+    shell="fish"
+    if [ -d "$XDG_CONFIG_HOME" ]; then
+        shell_profile="$XDG_CONFIG_HOME/fish/config.fish"
+    else
+        shell_profile="$HOME/.config/fish/config.fish"
+    fi
+  fi
+
+  export PATH="$HOME/.sv/go/bin:$PATH"
 }
 
 main "$@" || exit 1
