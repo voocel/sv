@@ -139,8 +139,8 @@ func (p *Package) install() (err error) {
 	return err
 }
 
-func (p *Package) uninstall() {
-
+func (p *Package) uninstall() error {
+	return os.RemoveAll(filepath.Join(svRoot))
 }
 
 func (p *Package) use() (err error) {
