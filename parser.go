@@ -1,9 +1,10 @@
 package main
 
 import (
-	"github.com/PuerkitoBio/goquery"
 	"io"
 	"strings"
+
+	"github.com/PuerkitoBio/goquery"
 )
 
 type Parser struct {

@@ -18,7 +18,7 @@ type app struct {
 }
 
 type startOpts struct {
-	cmd string
+	cmd    string
 	target string
 }
 
@@ -37,7 +37,10 @@ func (a *app) Start() (err error) {
 	switch a.opts.cmd {
 	case "use":
 		p.Tag = a.opts.target
-		p.use()
+		return p.use()
+	case "uninstall":
+		p.Tag = a.opts.target
+		return p.uninstall()
 	}
 
 	return

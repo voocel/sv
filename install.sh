@@ -10,23 +10,23 @@ set -eu
 
 GOROOT=${GOROOT:-$HOME/.sv/go}
 if [ "$(echo "$GOROOT" | cut -c1)" != "/" ]; then
-  error_and_abort "\$GOROOT must be an absolute path but it is set to $GOROOT"
+    error_and_abort "\$GOROOT must be an absolute path but it is set to $GOROOT"
 fi
 
 error_and_abort() {
-  printf '\n  %s: %s\n\n' "ERROR" "$*" >&2
-  exit 1
+    printf '\n  %s: %s\n\n' "ERROR" "$*" >&2
+    exit 1
 }
 
 print_banner() {
     cat <<-'EOF'
 =================================================
-               ______   _          _
-              / _____|  \ \       / /
+               _______  _          _
+              / ______| \ \       / /
              | |         \ \     / /
-              \______     \ \   / /
-              _______\     \ \ / /
-             |_______/      \ \_/
+              \_______    \ \   / /
+              ________\    \ \ / /
+             |________/     \ \_/
        ___           _        _ _
       |_ _|_ __  ___| |_ __ _| | | ___ _ __
        | || '_ \/ __| __/ _` | | |/ _ \ '__|
@@ -38,41 +38,41 @@ EOF
 
 
 print_message() {
-  local message
-  local severity
-  local red
-  local green
-  local yellow
-  local nc
+    local message
+    local severity
+    local red
+    local green
+    local yellow
+    local nc
 
-  message="${1}"
-  severity="${2}"
-  red='\e[0;31m'
-  green='\e[0;32m'
-  yellow='\e[1;33m'
-  nc='\e[0m'
+    message="${1}"
+    severity="${2}"
+    red='\e[0;31m'
+    green='\e[0;32m'
+    yellow='\e[1;33m'
+    nc='\e[0m'
 
-  case "${severity}" in
-    "info" ) echo -e "${nc}${message}${nc}";;
-      "ok" ) echo -e "${green}${message}${nc}";;
-   "error" ) echo -e "${red}${message}${nc}";;
-    "warn" ) echo -e "${yellow}${message}${nc}";;
-  esac
+    case "${severity}" in
+        "info" ) echo -e "${nc}${message}${nc}";;
+        "ok" ) echo -e "${green}${message}${nc}";;
+        "error" ) echo -e "${red}${message}${nc}";;
+        "warn" ) echo -e "${yellow}${message}${nc}";;
+    esac
 }
 
 get_os() {
-  local uname_out
-  if command -v uname >/dev/null 2>&1; then
-    uname_out="$(uname)"
-    if [[ "${uname_out}" == "" ]]; then
-      return 1
+    local uname_out
+    if command -v uname >/dev/null 2>&1; then
+        uname_out="$(uname)"
+        if [[ "${uname_out}" == "" ]]; then
+            return 1
+        else
+            echo "${uname_out}"
+            return 0
+        fi
     else
-      echo "${uname_out}"
-      return 0
+        return 20
     fi
-  else
-    return 20
-  fi
 }
 
 get_arch () {
@@ -106,31 +106,64 @@ get_platform () {
     printf "%s" "$platform"
 }
 
-main() {
-  local release="1.0.0"
-#  local os="$(uname -s | awk '{print tolower($0)}')"
-  local os=`get_os|tr "[A-Z]" "[a-z]"`
-  print_banner
-  echo $os
-
-  if [ -f ~/.bash_profile ]; then
-        . ~/.bash_profile
-  fi
-
-  if [ -n "$($SHELL -c 'echo $ZSH_VERSION')" ]; then
-    shell_profile="$HOME/.zshrc"
-  elif [ -n "$($SHELL -c 'echo $BASH_VERSION')" ]; then
-    shell_profile="$HOME/.bashrc"
-  elif [ -n "$($SHELL -c 'echo $FISH_VERSION')" ]; then
-    shell="fish"
-    if [ -d "$XDG_CONFIG_HOME" ]; then
-        shell_profile="$XDG_CONFIG_HOME/fish/config.fish"
-    else
-        shell_profile="$HOME/.config/fish/config.fish"
+get_shell_profile () {
+    if [ -n "$($SHELL -c 'echo $ZSH_VERSION')" ]; then
+        shell_profile="$HOME/.zshrc"
+    elif [ -n "$($SHELL -c 'echo $BASH_VERSION')" ]; then
+        shell_profile="$HOME/.bashrc"
     fi
-  fi
+}
 
-  export PATH="$HOME/.sv/go/bin:$PATH"
+set_env () {
+cat>"$HOME/.sv/env"<<EOF
+#!/bin/sh
+# sv shell setup
+case ":${PATH}:" in
+    *:"$HOME/.sv/go/bin":*)
+        ;;
+    *)
+        export PATH="$HOME/.sv/go:$PATH"
+        ;;
+esac
+EOF
+}
+
+main() {
+    local release="1.0.0"
+#     local os="$(uname -s | awk '{print tolower($0)}')"
+    local os=`get_os|tr "[A-Z]" "[a-z]"`
+    print_banner
+    echo $os
+
+    if [ -f ~/.bash_profile ]; then
+        . ~/.bash_profile
+    fi
+
+    get_shell_profile
+
+    local envStr='. "$HOME/.sv/env"'
+    if grep -qs $envStr "$HOME/${shell_profile}"; then
+        echo "SV env has exists in $shell_profile"
+    else
+        echo $envStr >> "$HOME/${shell_profile}"
+    fi
+
+    . "$HOME/.sv/env"
+
+
+#  [ -z "$GOROOT" ] && GOROOT="$HOME/.go"
+#  [ -z "$GOPATH" ] && GOPATH="$HOME/go"
+#  mkdir -p "$GOPATH"/{src,pkg,bin} "$GOROOT"
+#  mv go/* "$GOROOT"
+#  rmdir go
+
+#  touch "$HOME/.${shell_profile}"
+#  {
+#    echo "export GOROOT=$GOROOT"
+#    echo "export GOPATH=$GOPATH"
+#    echo 'export PATH=$PATH:$GOROOT/bin:$GOPATH/bin'
+#  } >>"$HOME/.${shell_profile}"
+    export PATH="$HOME/.sv/go/bin:$PATH"
 }
 
 main "$@" || exit 1

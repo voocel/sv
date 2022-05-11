@@ -41,9 +41,9 @@ func main() {
 			Action:  baseCmd,
 			Aliases: []string{"ls"},
 		}, {
-			Name:    "use",
-			Usage:   "switch local versions",
-			Action:  baseCmd,
+			Name:   "use",
+			Usage:  "switch local versions",
+			Action: baseCmd,
 		},
 	}
 	app.Before = func(context *cli.Context) (err error) {
@@ -79,7 +79,7 @@ func baseCmd(c *cli.Context) (err error) {
 
 func runApp(c *cli.Context) (err error) {
 	opts := &startOpts{
-		cmd: c.Command.Name,
+		cmd:    c.Command.Name,
 		target: c.Args().First(),
 	}
 	a := newApp(opts)
