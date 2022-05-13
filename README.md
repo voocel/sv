@@ -18,6 +18,22 @@ install a release from the command-line
 ```
 
 ## 🌲 Usage
+*select a version to install*
+```bash
+sv
+```
+*install specific version*
+```bash
+sv install 1.18.1
+```
+*uninstall specific version*
+```bash
+sv uninstall 1.18.1
+```
+*install a local specific version*
+```bash
+sv use 1.18.1
+```
 
 ## ⚠️ License
 
