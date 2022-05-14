@@ -46,10 +46,6 @@ func (a *app) Start() (err error) {
 	return
 }
 
-func (a *app) use() {
-
-}
-
 func (a *app) selectVersion() (err error) {
 	var target string
 	resp, err := http.Get(baseUrl + "/dl")

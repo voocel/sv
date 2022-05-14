@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha1"
 	"crypto/sha256"
 	"errors"
@@ -17,48 +18,6 @@ import (
 type Version struct {
 	Name     string
 	Packages []*Package
-}
-
-type sortVersion []string
-
-func (sv sortVersion) Len() int {
-	return len(sv)
-}
-
-func (sv sortVersion) Less(i, j int) bool {
-	arr1, arr2 := strings.Split(sv[i], "."), strings.Split(sv[j], ".")
-	if len(arr1) != len(arr2) {
-		if len(arr1) > len(arr2) {
-			arr2 = append(arr2, "0")
-		} else {
-			arr1 = append(arr1, "0")
-		}
-	}
-
-	for i := range arr1 {
-		bytes1, bytes2 := []byte(arr1[i]), []byte(arr2[i])
-		if len(bytes1) > len(bytes2) {
-			return true
-		}
-		if len(bytes1) < len(bytes2) {
-			return false
-		}
-
-		for i2 := range bytes1 {
-			if bytes1[i2] > bytes2[i2] {
-				return true
-			}
-			if bytes1[i2] < bytes2[i2] {
-				return false
-			}
-		}
-	}
-
-	return false
-}
-
-func (sv sortVersion) Swap(i, j int) {
-	sv[i], sv[j] = sv[j], sv[i]
 }
 
 type Package struct {
@@ -116,27 +75,7 @@ func (p *Package) install() (err error) {
 		}
 	}
 
-	if err = os.RemoveAll(svRoot); err != nil {
-		return err
-	}
-	if err = os.Symlink(filepath.Join(svCache, p.Tag), svRoot); err != nil {
-		return err
-	}
-
-	goBin := filepath.Join(svRoot, "bin", "go")
-	cmd := exec.Command(goBin, "version")
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	newPath := filepath.Join(svRoot, "bin")
-	if p := os.Getenv("PATH"); p != "" {
-		newPath += string(filepath.ListSeparator) + p
-	}
-	cmd.Env = setEnv(append(os.Environ(), "GOROOT="+svRoot, "PATH="+newPath))
-	if err := cmd.Run(); err != nil {
-		os.Exit(1)
-	}
-	return err
+	return execute(p.Tag)
 }
 
 func (p *Package) uninstall() error {
@@ -180,6 +119,24 @@ func execute(tag string) (err error) {
 	if err := cmd.Run(); err != nil {
 		os.Exit(1)
 	}
+	return
+}
+
+// ExecCommand use shell /bin/bash -c to execute command
+func ExecCommand(command string) (stdout, stderr string, err error) {
+	var out bytes.Buffer
+	var errout bytes.Buffer
+	cmd := exec.Command("/bin/bash", "-c", command)
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("cmd")
+	}
+	cmd.Stdout = &out
+	cmd.Stderr = &errout
+	err = cmd.Run()
+	if err != nil {
+		stderr = string(errout.Bytes())
+	}
+	stdout = string(out.Bytes())
 	return
 }
 
