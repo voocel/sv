@@ -9,6 +9,7 @@
 set -eu
 
 GOROOT=${GOROOT:-$HOME/.sv/go}
+
 if [ "$(echo "$GOROOT" | cut -c1)" != "/" ]; then
     error_and_abort "\$GOROOT must be an absolute path but it is set to $GOROOT"
 fi
@@ -133,6 +134,13 @@ esac
 EOF
 }
 
+check_curl () {
+    if !(test -x "$(command -v curl)"); then
+        printf "\e[1;31mYou must pre-install the curl tool\e[0m\n"
+        exit 1
+    fi
+}
+
 main() {
     local release="1.0.0"
 #     local os="$(uname -s | awk '{print tolower($0)}')"
@@ -144,17 +152,16 @@ main() {
         . ~/.bash_profile
     fi
 
+    set_env
+
     get_shell_profile
 
     local envStr='. "$HOME/.sv/env"'
-    if grep -qs $envStr "$HOME/${shell_profile}"; then
+    if grep -q "$envStr" "$HOME/${shell_profile}"; then
         echo "SV env has exists in $shell_profile"
     else
         echo $envStr >> "$HOME/${shell_profile}"
     fi
-
-    . "$HOME/.sv/env"
-
 
 #  [ -z "$GOROOT" ] && GOROOT="$HOME/.go"
 #  [ -z "$GOPATH" ] && GOPATH="$HOME/go"
