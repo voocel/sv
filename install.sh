@@ -134,6 +134,17 @@ esac
 EOF
 }
 
+init_env () {
+    local envStr='. "$HOME/.sv/env"'
+    if grep -q "$envStr" "$HOME/${shell_profile}"; then
+        echo "SV env has exists in $shell_profile"
+    else
+        echo $envStr >> "$HOME/${shell_profile}"
+    fi
+
+    . $HOME/${shell_profile}
+}
+
 check_curl () {
     if !(test -x "$(command -v curl)"); then
         printf "\e[1;31mYou must pre-install the curl tool\e[0m\n"
@@ -156,26 +167,12 @@ main() {
 
     get_shell_profile
 
-    local envStr='. "$HOME/.sv/env"'
-    if grep -q "$envStr" "$HOME/${shell_profile}"; then
-        echo "SV env has exists in $shell_profile"
-    else
-        echo $envStr >> "$HOME/${shell_profile}"
-    fi
+    init_env
 
 #  [ -z "$GOROOT" ] && GOROOT="$HOME/.go"
 #  [ -z "$GOPATH" ] && GOPATH="$HOME/go"
 #  mkdir -p "$GOPATH"/{src,pkg,bin} "$GOROOT"
-#  mv go/* "$GOROOT"
-#  rmdir go
 
-#  touch "$HOME/.${shell_profile}"
-#  {
-#    echo "export GOROOT=$GOROOT"
-#    echo "export GOPATH=$GOPATH"
-#    echo 'export PATH=$PATH:$GOROOT/bin:$GOPATH/bin'
-#  } >>"$HOME/.${shell_profile}"
-    export PATH="$HOME/.sv/go/bin:$PATH"
 }
 
 main "$@" || exit 1
