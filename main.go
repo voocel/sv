@@ -20,30 +20,43 @@ func main() {
 	app.Usage = "switch version"
 	app.Version = "v1.0.0"
 	app.EnableBashCompletion = true
-	app.Flags = []cli.Flag{
-		&cli.StringFlag{
-			Name:     "sv",
-			Aliases:  []string{"s"},
-			Usage:    "input a specific version",
-			Required: false,
-		}, &cli.StringFlag{
-			Name:     "remote",
-			Aliases:  []string{"r"},
-			Usage:    "input a specific version",
-			Required: false,
-		},
-	}
-	app.Action = baseCmd
+	//app.Action = baseCmd
 	app.Commands = []*cli.Command{
 		{
 			Name:    "list",
 			Usage:   "show all local versions",
 			Action:  baseCmd,
 			Aliases: []string{"ls"},
+			Flags: []cli.Flag{
+				&cli.BoolFlag{
+					Name:     "remote",
+					Aliases:  []string{"r"},
+					Usage:    "show all remote versions",
+					Required: false,
+				},
+			},
 		}, {
 			Name:   "use",
-			Usage:  "switch local versions",
+			Usage:  "input a specific local version",
 			Action: baseCmd,
+			Flags: []cli.Flag{
+				&cli.BoolFlag{
+					Name:     "remote",
+					Aliases:  []string{"r"},
+					Usage:    "input a specific remote version",
+					Required: false,
+				},
+			},
+		}, {
+			Name:    "install",
+			Usage:   "install a specific remote version",
+			Action:  baseCmd,
+			Aliases: []string{"i"},
+		}, {
+			Name:    "uninstall",
+			Usage:   "uninstall a specific local version",
+			Action:  baseCmd,
+			Aliases: []string{"ui"},
 		},
 	}
 	app.Before = func(context *cli.Context) (err error) {
@@ -51,7 +64,7 @@ func main() {
 		if err != nil {
 			return
 		}
-		svHome = filepath.Join(homeDir, "sv")
+		svHome = filepath.Join(homeDir, ".sv")
 		svRoot = filepath.Join(svHome, "go")
 		svDownload = filepath.Join(svHome, "downloads")
 		svCache = filepath.Join(svHome, "cache")
@@ -66,7 +79,7 @@ func main() {
 
 	err := app.Run(os.Args)
 	if err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 }
 
@@ -81,6 +94,7 @@ func runApp(c *cli.Context) (err error) {
 	opts := &startOpts{
 		cmd:    c.Command.Name,
 		target: c.Args().First(),
+		remote: c.Bool("remote"),
 	}
 	a := newApp(opts)
 	err = a.Start()

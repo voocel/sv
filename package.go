@@ -32,12 +32,15 @@ type Package struct {
 	Algorithm string
 }
 
-func (p *Package) Download() error {
+func (p *Package) download() error {
 	d := NewDownloader(runtime.NumCPU())
+	if p.URL == "" || p.Name == "" {
+		return errors.New("download URL is empty")
+	}
 	return d.Download(baseUrl+p.URL, p.Name)
 }
 
-func (p *Package) CheckSum() (err error) {
+func (p *Package) checkSum() (err error) {
 	f, err := os.Open(svDownload + "/" + p.Name)
 	if err != nil {
 		return err
@@ -64,38 +67,80 @@ func (p *Package) CheckSum() (err error) {
 	return nil
 }
 
-func (p *Package) install() (err error) {
-	srcPath := svDownload + "/" + p.Name
-	if !Exists(filepath.Join(svCache, p.Tag)) {
-		if err = Extract(svCache, srcPath); err != nil {
-			return err
-		}
-		if err = os.Rename(filepath.Join(svCache, "go"), filepath.Join(svCache, p.Tag)); err != nil {
-			return err
-		}
-	}
-
+func (p *Package) useCached() error {
 	return execute(p.Tag)
 }
 
-func (p *Package) uninstall() error {
-	return os.RemoveAll(filepath.Join(svRoot))
+func (p *Package) useDownloaded() error {
+	//if err = p.CheckSum(); err != nil {
+	//	return err
+	//}
+	if err := Extract(svCache, filepath.Join(svDownload, p.Name)); err != nil {
+		return err
+	}
+	if err := os.Rename(filepath.Join(svCache, "go"), filepath.Join(svCache, p.Tag)); err != nil {
+		return err
+	}
+	return p.useCached()
+}
+
+func (p *Package) useRemote() error {
+	if err := p.download(); err != nil {
+		return err
+	}
+	return p.useDownloaded()
+}
+
+// useLocal contain cached and downloaded
+func (p *Package) useLocal() error {
+	if inCache(p.Tag) {
+		return p.useCached()
+	}
+	if inDownload(p.Name) {
+		return p.useDownloaded()
+	}
+	return errors.New("local does not exist")
 }
 
 func (p *Package) use() (err error) {
-	if inCache(p.Tag) {
-		return execute(p.Tag)
+	if err := p.useLocal(); err != nil {
+		return p.useRemote()
 	}
-	if inDownload(p.Tag) {
-		if err = Extract(svCache, filepath.Join(svDownload, p.Name)); err != nil {
-			return err
-		}
-		if err = os.Rename(filepath.Join(svCache, "go"), filepath.Join(svCache, p.Tag)); err != nil {
-			return err
-		}
-		return execute(p.Tag)
+	return
+}
+
+func (p *Package) install() error {
+	if err := p.removeLocal(); err != nil {
+		return err
 	}
-	return 
+	return p.useRemote()
+}
+
+func (p *Package) remove() error {
+	if err := p.removeLocal(); err != nil {
+		return err
+	}
+	return os.RemoveAll(svRoot)
+}
+
+func (p *Package) removeLocal() (err error) {
+	err = os.RemoveAll(filepath.Join(svCache, p.Tag))
+	if err != nil {
+		return
+	}
+	return os.RemoveAll(filepath.Join(svDownload, p.Name))
+}
+
+func (p *Package) getLocalVersion() (versions []string, err error) {
+	folder := filepath.Join(svCache, "*")
+	versions, err = filepath.Glob(folder)
+	if err != nil {
+		return
+	}
+	for i, v := range versions {
+		versions[i] = filepath.Base(v)
+	}
+	return
 }
 
 func execute(tag string) (err error) {
@@ -140,8 +185,8 @@ func ExecCommand(command string) (stdout, stderr string, err error) {
 	return
 }
 
-func inDownload(tag string) bool {
-	path := filepath.Join(svDownload, tag)
+func inDownload(name string) bool {
+	path := filepath.Join(svDownload, name)
 	return Exists(path)
 }
 
