@@ -152,6 +152,42 @@ check_curl () {
     fi
 }
 
+get_sv_bin () {
+    SV_BIN=''
+
+    THISOS=$(uname -s)
+    ARCH=$(uname -m)
+
+    case $THISOS in
+       Linux*)
+          case $ARCH in
+            arm64)
+              GOBREW_ARCH_BIN="sv-linux-arm-64"
+              ;;
+            aarch64)
+              GOBREW_ARCH_BIN="sv-linux-arm-64"
+              ;;
+            *)
+              GOBREW_ARCH_BIN="sv-linux-amd-64"
+              ;;
+          esac
+          ;;
+       Darwin*)
+          case $ARCH in
+            arm64)
+              GOBREW_ARCH_BIN="sv-darwin-arm-64"
+              ;;
+            *)
+              GOBREW_ARCH_BIN="sv-darwin-64"
+              ;;
+          esac
+          ;;
+       Windows*)
+          GOBREW_ARCH_BIN="sv-windows-64.exe"
+          ;;
+    esac
+}
+
 main() {
     local release="1.0.0"
 #     local os="$(uname -s | awk '{print tolower($0)}')"
@@ -168,6 +204,13 @@ main() {
     get_shell_profile
 
     init_env
+
+    check_curl
+
+    get_sv_bin
+    curl -kLs https://raw.githubusercontent.com/voocel/sv/master/bin/$SV_BIN -o /usr/local/bin/sv
+    chmod +x /usr/local/bin/sv
+    echo "Installed successfully to: /usr/local/bin/sv"
 
 #  [ -z "$GOROOT" ] && GOROOT="$HOME/.go"
 #  [ -z "$GOPATH" ] && GOPATH="$HOME/go"
