@@ -20,6 +20,7 @@ func main() {
 	app.Usage = "switch version"
 	app.Version = "v1.0.0"
 	app.EnableBashCompletion = true
+	app.CustomAppHelpTemplate = "add sv to your ~/.bashrc or ~/.zshrc. export PATH=\"$HOME/.sv/bin:$PATH\""
 	//app.Action = baseCmd
 	app.Commands = []*cli.Command{
 		{
