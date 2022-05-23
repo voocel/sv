@@ -20,6 +20,7 @@ type Bar struct {
 	Filled         string // Filled section representation ("█ ■")
 	Empty          string // Empty section representation ("░ □")
 	Width          int    // Width of the bar
+	Prefix         string // Prefix of the bar
 
 	text    string
 	rate    string
@@ -37,12 +38,13 @@ func NewBar(total int64) *Bar {
 		EndDelimiter:   "|",
 		Filled:         "█",
 		Empty:          "░",
-		Width:          60,
+		Width:          50,
+		Prefix:         "Downloading",
 		total:          total,
 		done:           make(chan struct{}),
 	}
 	go b.listenRate()
-	b.template(`{{.Percent | printf "%3.0f"}}% {{.Bar}} {{.Total}} {{.Rate}} {{.Text}}`)
+	b.template(`{{.Prefix}} {{.Percent | printf "%3.0f"}}% {{.Bar}} {{.Total}} {{.Rate}} {{.Text}}`)
 
 	return b
 }
@@ -83,6 +85,9 @@ func (b *Bar) Add(n int64) {
 	if b.current > b.total {
 		panic("cannot be greater than the total")
 	}
+	if b.current == b.total {
+		b.Prefix = "success"
+	}
 }
 
 // string return the progress bar
@@ -92,12 +97,14 @@ func (b *Bar) string() string {
 		b.rate = "[" + b.bytesToSize(0) + "/s]"
 	}
 	data := struct {
+		Prefix  string
 		Percent float64
 		Bar     string
 		Text    string
 		Rate    string
 		Total   string
 	}{
+		Prefix:  b.Prefix,
 		Percent: b.percent(),
 		Bar:     b.bar(),
 		Text:    b.text,
@@ -136,7 +143,7 @@ func (b *Bar) bar() string {
 
 // Render write the progress bar to io.Writer
 func (b *Bar) Render(w io.Writer) int64 {
-	s := fmt.Sprintf("\x1bM\r   %s ", b.string())
+	s := fmt.Sprintf("\x1bM\r %s ", b.string())
 	io.WriteString(w, s)
 	return int64(len(s))
 }

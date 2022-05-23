@@ -13,18 +13,19 @@ import (
 )
 
 func Extract(dst, src string) error {
+	fmt.Println("extract...")
 	switch {
 	case strings.HasSuffix(src, ".tar.gz"), strings.HasSuffix(src, ".tgz"):
-		return Untar(dst, src)
+		return UnpackTar(dst, src)
 	case strings.HasSuffix(src, ".zip"):
-		return Unzip(dst, src)
+		return UnpackZip(dst, src)
 	default:
 		return fmt.Errorf("failed to extract %v, unhandled file type", src)
 	}
 }
 
-// Untar take a destination path and a reader
-func Untar(dst, src string) error {
+// UnpackTar take a destination path and a reader
+func UnpackTar(dst, src string) error {
 	file, err := os.Open(src)
 	if err != nil {
 		return err
@@ -38,6 +39,12 @@ func Untar(dst, src string) error {
 		}
 		defer fileReader.Close()
 	}
+
+	fileInfo, _ := file.Stat()
+	bar := NewBar(fileInfo.Size() * 3)
+	bar.Empty = "□"
+	bar.Filled = "■"
+	bar.Prefix = "Unpacking"
 
 	tr := tar.NewReader(fileReader)
 	for {
@@ -68,18 +75,18 @@ func Untar(dst, src string) error {
 				return err
 			}
 
-			if _, err := io.Copy(outFile, tr); err != nil {
+			if _, err := io.Copy(io.MultiWriter(outFile, bar), tr); err != nil {
 				return err
 			}
 			outFile.Close()
 		default:
-			log.Fatalf("uknown type: %s in %s", header.Typeflag, header.Name)
+			log.Fatalf("uknown type: %v in %s", header.Typeflag, header.Name)
 		}
 	}
 }
 
-// Tar write each file found to the tar writer
-func Tar(src string, writers ...io.Writer) error {
+// PackTar write each file found to the tar writer
+func PackTar(src string, writers ...io.Writer) error {
 	if _, err := os.Stat(src); err != nil {
 		return fmt.Errorf("unable to tar files: %v", err.Error())
 	}
@@ -120,8 +127,8 @@ func Tar(src string, writers ...io.Writer) error {
 	})
 }
 
-// Zip a file or a directory
-func Zip(dst, src string) error {
+// PackZip a file or a directory
+func PackZip(dst, src string) error {
 	f, err := os.Create(dst)
 	if err != nil {
 		return err
@@ -170,8 +177,8 @@ func Zip(dst, src string) error {
 	})
 }
 
-// Unzip will decompress a zip archived file
-func Unzip(dst, src string) error {
+// UnpackZip will decompress a zip archived file
+func UnpackZip(dst, src string) error {
 	r, err := zip.OpenReader(src)
 	if err != nil {
 		return err

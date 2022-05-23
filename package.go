@@ -72,15 +72,19 @@ func (p *Package) useCached() error {
 }
 
 func (p *Package) useDownloaded() error {
-	//if err = p.CheckSum(); err != nil {
-	//	return err
-	//}
+	if p.Checksum != "" {
+		if err := p.checkSum(); err != nil {
+			return err
+		}
+	}
+
 	if err := Extract(svCache, filepath.Join(svDownload, p.Name)); err != nil {
 		return err
 	}
 	if err := os.Rename(filepath.Join(svCache, "go"), filepath.Join(svCache, p.Tag)); err != nil {
 		return err
 	}
+
 	return p.useCached()
 }
 

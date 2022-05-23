@@ -104,11 +104,16 @@ func (a *app) list() error {
 }
 
 func (a *app) selectVersions(versions []string) (target string, err error) {
+	if len(versions) == 0 {
+		return "", errors.New("no available versions to select")
+	}
+
 	surveyIcon := func() survey.AskOpt {
 		return survey.WithIcons(func(icons *survey.IconSet) {
 			icons.SelectFocus.Text = "→"
 		})
 	}
+
 	sort.Sort(sortVersion(versions))
 	err = survey.AskOne(&survey.Select{
 		Message: "Choose a version:",

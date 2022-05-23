@@ -86,7 +86,7 @@ func main() {
 
 func baseCmd(c *cli.Context) (err error) {
 	if err := runApp(c); err != nil {
-		return cli.Exit(err, 1)
+		return cli.Exit(err, 0)
 	}
 	return
 }
