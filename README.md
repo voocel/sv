@@ -5,6 +5,8 @@
 
 SV is a great open source beautiful Go Version Manager
 
+**English** | [中文](./README.zh-CN.md)
+
 ## 🏆 Purpose
 Allows you to easily build and switch different Golang versions
 
@@ -16,6 +18,13 @@ install a release from the command-line
 ```
 👉 curl -sL https://raw.githubusercontent.com/voocel/sv/main/install.sh -o - | sudo bash
 ```
+
+## 🔥 Features
+* [x] List local or remote all versions
+* [x] Install a specific version
+* [x] Uninstall a specific version
+* [x] Quickly switch local versions
+* [x] Pretty download progress bar
 
 ## 🌲 Usage
 *select a version to install*

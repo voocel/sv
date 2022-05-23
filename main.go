@@ -26,8 +26,9 @@ func main() {
 		{
 			Name:    "list",
 			Usage:   "show all local versions",
+			UsageText: "sv ls",
 			Action:  baseCmd,
-			Aliases: []string{"ls"},
+			Aliases: []string{"ls", "l"},
 			Flags: []cli.Flag{
 				&cli.BoolFlag{
 					Name:     "remote",
@@ -39,6 +40,7 @@ func main() {
 		}, {
 			Name:   "use",
 			Usage:  "input a specific local version",
+			UsageText: "sv use <version>",
 			Action: baseCmd,
 			Flags: []cli.Flag{
 				&cli.BoolFlag{
@@ -51,11 +53,13 @@ func main() {
 		}, {
 			Name:    "install",
 			Usage:   "install a specific remote version",
+			UsageText: "sv install <version>",
 			Action:  baseCmd,
 			Aliases: []string{"i"},
 		}, {
 			Name:    "uninstall",
 			Usage:   "uninstall a specific local version",
+			UsageText: "sv uninstall <version>",
 			Action:  baseCmd,
 			Aliases: []string{"ui"},
 		},
