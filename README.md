@@ -6,7 +6,7 @@
 SV is a great open source beautiful Go Version Manager
 
 ## 🏆 Purpose
-
+Allows you to easily build and switch different Golang versions
 
 ## 💡 Requirements
 *Go version: 1.9.x or later*
