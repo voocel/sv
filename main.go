@@ -15,10 +15,12 @@ var (
 	svDownload string
 )
 
+const Ver = "v1.0.0"
+
 func main() {
 	app := cli.NewApp()
 	app.Usage = "switch version"
-	app.Version = "v1.0.0"
+	app.Version = Ver
 	app.EnableBashCompletion = true
 	app.CustomAppHelpTemplate = "add sv to your ~/.bashrc or ~/.zshrc. export PATH=\"$HOME/.sv/bin:$PATH\""
 	//app.Action = baseCmd
@@ -62,6 +64,11 @@ func main() {
 			UsageText: "sv uninstall <version>",
 			Action:  baseCmd,
 			Aliases: []string{"ui"},
+		}, {
+			Name:    "upgrade",
+			Usage:   "upgrade sv",
+			UsageText: "sv upgrade",
+			Action:  baseCmd,
 		},
 	}
 	app.Before = func(context *cli.Context) (err error) {

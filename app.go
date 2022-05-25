@@ -61,6 +61,8 @@ func (a *app) Start() (err error) {
 		p.Tag = a.opts.target
 		p.Name = a.tagToName(p.Tag)
 		return p.remove()
+	case "upgrade":
+		checkUpgrade()
 	}
 	return
 }

@@ -199,18 +199,19 @@ main() {
         . ~/.bash_profile
     fi
 
-    set_env
-
-    get_shell_profile
-
-    init_env
-
+    echo "[1/2] Downloading sv to the /usr/local/bin"
     check_curl
-
     get_sv_bin
     curl -kLs https://raw.githubusercontent.com/voocel/sv/master/bin/$SV_BIN -o /usr/local/bin/sv
-    chmod +x /usr/local/bin/sv
+    chmod +x /usr/local/jbin/sv
     echo "Installed successfully to: /usr/local/bin/sv"
+
+    echo "[2/2] Setting environment variables"
+    set_env
+    get_shell_profile
+    init_env
+    echo "Set env successfully"
+
 
 #  [ -z "$GOROOT" ] && GOROOT="$HOME/.go"
 #  [ -z "$GOPATH" ] && GOPATH="$HOME/go"

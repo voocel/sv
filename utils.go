@@ -3,6 +3,7 @@ package main
 import (
 	"archive/tar"
 	"archive/zip"
+	"bufio"
 	"compress/gzip"
 	"fmt"
 	"io"
@@ -246,4 +247,25 @@ func Exists(path string) bool {
 		}
 	}
 	return true
+}
+
+func checkStringExistsFile(filename, value string) (bool, error) {
+	file, err := os.OpenFile(filename, os.O_RDONLY, 0600)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == value {
+			return true, nil
+		}
+	}
+
+	return false, scanner.Err()
 }
