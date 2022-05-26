@@ -3,7 +3,10 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 )
 
 const (
@@ -45,8 +48,35 @@ func (u *Upgrade) checkUpgrade() error {
 	if versionCompare(Ver) >= versionCompare(latest.TagName) {
 		return errors.New("it's already the latest version")
 	}
+	u.downloadURL = latest.Assets[0].BrowserDownloadURL
 
-	return err
+	return u.upgrade()
 }
 
+func (u *Upgrade) upgrade() error {
+	filename := filepath.Base(u.downloadURL)
+	path := filepath.Join(svBin, filename)
 
+	resp, err := http.Get(u.downloadURL)
+	if err != nil {
+		return err
+	}
+
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0666)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	_, err = io.Copy(f, resp.Body)
+	if err != nil {
+		return err
+	}
+
+	err = os.RemoveAll(filepath.Join(svBin, "sv"))
+	if err != nil {
+		return err
+	}
+
+	return Extract(svBin, path)
+}
