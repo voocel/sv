@@ -2,8 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
-	"strings"
 )
 
 const (
@@ -11,8 +11,8 @@ const (
 )
 
 type Upgrade struct {
-	latestTag string
-	DownloadURL string
+	latestTag   string
+	downloadURL string
 }
 
 type Release struct {
@@ -26,49 +26,27 @@ type Asset struct {
 	BrowserDownloadURL string `json:"browser_download_url"`
 }
 
-func checkUpgrade() (bool, error) {
+func NewUpgrade() *Upgrade {
+	return &Upgrade{}
+}
+
+func (u *Upgrade) checkUpgrade() error {
 	resp, err := http.Get(upgradeApi)
 	if err != nil {
-		return false, err
+		return err
 	}
+
 	latest := &Release{}
 	err = json.NewDecoder(resp.Body).Decode(latest)
 	if err != nil {
-		return false, err
+		return err
 	}
-	if versionCompare(latest.TagName) > versionCompare(Ver) {
-		return true, nil
+
+	if versionCompare(Ver) >= versionCompare(latest.TagName) {
+		return errors.New("it's already the latest version")
 	}
-	return false, nil
+
+	return err
 }
 
-func versionCompare(version string) string {
-	if strings.HasPrefix(version, "v") {
-		version = strings.TrimPrefix(version, "v")
-	}
-	const maxByte = 1<<8 - 1
-	vo := make([]byte, 0, len(version)+8)
-	j := -1
-	for i := 0; i < len(version); i++ {
-		b := version[i]
-		if '0' > b || b > '9' {
-			vo = append(vo, b)
-			j = -1
-			continue
-		}
-		if j == -1 {
-			vo = append(vo, 0x00)
-			j = len(vo) - 1
-		}
-		if vo[j] == 1 && vo[j+1] == '0' {
-			vo[j+1] = b
-			continue
-		}
-		if vo[j]+1 > maxByte {
-			panic("invalid version")
-		}
-		vo = append(vo, b)
-		vo[j]++
-	}
-	return string(vo)
-}
+

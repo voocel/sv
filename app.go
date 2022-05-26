@@ -62,7 +62,8 @@ func (a *app) Start() (err error) {
 		p.Name = a.tagToName(p.Tag)
 		return p.remove()
 	case "upgrade":
-		checkUpgrade()
+		u := NewUpgrade()
+		return u.checkUpgrade()
 	}
 	return
 }
@@ -107,7 +108,7 @@ func (a *app) list() error {
 
 func (a *app) selectVersions(versions []string) (target string, err error) {
 	if len(versions) == 0 {
-		return "", errors.New("no available versions to select")
+		return "", errors.New("no available versions locally to select")
 	}
 
 	surveyIcon := func() survey.AskOpt {
@@ -116,7 +117,9 @@ func (a *app) selectVersions(versions []string) (target string, err error) {
 		})
 	}
 
-	sort.Sort(sortVersion(versions))
+	sort.Slice(versions, func(i, j int) bool {
+		return versionCompare(versions[i]) > versionCompare(versions[j])
+	})
 	err = survey.AskOne(&survey.Select{
 		Message: "Choose a version:",
 		Help:    "Enter to install the selected version",

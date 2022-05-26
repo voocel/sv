@@ -11,6 +11,7 @@ import (
 var (
 	svHome     string
 	svRoot     string
+	svBin      string
 	svCache    string
 	svDownload string
 )
@@ -26,11 +27,11 @@ func main() {
 	//app.Action = baseCmd
 	app.Commands = []*cli.Command{
 		{
-			Name:    "list",
-			Usage:   "show all local versions",
+			Name:      "list",
+			Usage:     "show all local versions",
 			UsageText: "sv ls",
-			Action:  baseCmd,
-			Aliases: []string{"ls", "l"},
+			Action:    baseCmd,
+			Aliases:   []string{"ls", "l"},
 			Flags: []cli.Flag{
 				&cli.BoolFlag{
 					Name:     "remote",
@@ -40,10 +41,10 @@ func main() {
 				},
 			},
 		}, {
-			Name:   "use",
-			Usage:  "input a specific local version",
+			Name:      "use",
+			Usage:     "input a specific local version",
 			UsageText: "sv use <version>",
-			Action: baseCmd,
+			Action:    baseCmd,
 			Flags: []cli.Flag{
 				&cli.BoolFlag{
 					Name:     "remote",
@@ -53,22 +54,22 @@ func main() {
 				},
 			},
 		}, {
-			Name:    "install",
-			Usage:   "install a specific remote version",
+			Name:      "install",
+			Usage:     "install a specific remote version",
 			UsageText: "sv install <version>",
-			Action:  baseCmd,
-			Aliases: []string{"i"},
+			Action:    baseCmd,
+			Aliases:   []string{"i"},
 		}, {
-			Name:    "uninstall",
-			Usage:   "uninstall a specific local version",
+			Name:      "uninstall",
+			Usage:     "uninstall a specific local version",
 			UsageText: "sv uninstall <version>",
-			Action:  baseCmd,
-			Aliases: []string{"ui"},
+			Action:    baseCmd,
+			Aliases:   []string{"ui"},
 		}, {
-			Name:    "upgrade",
-			Usage:   "upgrade sv",
+			Name:      "upgrade",
+			Usage:     "upgrade sv",
 			UsageText: "sv upgrade",
-			Action:  baseCmd,
+			Action:    baseCmd,
 		},
 	}
 	app.Before = func(context *cli.Context) (err error) {
@@ -78,12 +79,16 @@ func main() {
 		}
 		svHome = filepath.Join(homeDir, ".sv")
 		svRoot = filepath.Join(svHome, "go")
+		svBin = filepath.Join(svHome, "bin")
 		svDownload = filepath.Join(svHome, "downloads")
 		svCache = filepath.Join(svHome, "cache")
 		if err = os.MkdirAll(svDownload, 0755); err != nil {
 			return err
 		}
 		if err = os.MkdirAll(svCache, 0755); err != nil {
+			return err
+		}
+		if err = os.MkdirAll(svBin, 0755); err != nil {
 			return err
 		}
 		return
