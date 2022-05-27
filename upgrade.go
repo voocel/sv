@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -34,6 +35,7 @@ func NewUpgrade() *Upgrade {
 }
 
 func (u *Upgrade) checkUpgrade() error {
+	fmt.Println("check version...")
 	resp, err := http.Get(upgradeApi)
 	if err != nil {
 		return err
@@ -57,6 +59,7 @@ func (u *Upgrade) upgrade() error {
 	filename := filepath.Base(u.downloadURL)
 	path := filepath.Join(svBin, filename)
 
+	fmt.Println("downloading the newest version...")
 	resp, err := http.Get(u.downloadURL)
 	if err != nil {
 		return err
@@ -73,10 +76,6 @@ func (u *Upgrade) upgrade() error {
 		return err
 	}
 
-	err = os.RemoveAll(filepath.Join(svBin, "sv"))
-	if err != nil {
-		return err
-	}
-
-	return Extract(svBin, path)
+	fmt.Println("upgrade success!")
+	return os.Rename(filepath.Join(svBin, filename), filepath.Join(svBin, "sv"))
 }

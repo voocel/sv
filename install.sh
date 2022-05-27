@@ -189,7 +189,7 @@ get_sv_bin () {
 }
 
 main() {
-    local release="1.0.0"
+    local release="v1.0.0"
 #     local os="$(uname -s | awk '{print tolower($0)}')"
     local os=`get_os|tr "[A-Z]" "[a-z]"`
     print_banner
@@ -202,9 +202,9 @@ main() {
     echo "[1/2] Downloading sv to the /usr/local/bin"
     check_curl
     get_sv_bin
-    curl -kLs https://raw.githubusercontent.com/voocel/sv/master/bin/$SV_BIN -o /usr/local/bin/sv
-    chmod +x /usr/local/jbin/sv
-    echo "Installed successfully to: /usr/local/bin/sv"
+    curl -kLs https://github.com/voocel/sv/releases/download/$release/$SV_BIN -o $HOME/.sv/bin/sv
+    chmod +x $HOME/.sv/bin/sv
+    echo "Installed successfully to: $HOME/.sv/bin/sv"
 
     echo "[2/2] Setting environment variables"
     set_env
