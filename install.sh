@@ -129,6 +129,7 @@ case ":${PATH}:" in
         ;;
     *)
         export PATH="$HOME/.sv/go:$PATH"
+        export PATH="$HOME/.sv/bin:$PATH"
         ;;
 esac
 EOF

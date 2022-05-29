@@ -16,14 +16,15 @@ var (
 	svDownload string
 )
 
-const Ver = "v1.0.0"
+const Ver = "v1.0.2"
 
 func main() {
+	l.SetLevel("debug")
 	app := cli.NewApp()
 	app.Usage = "switch version"
 	app.Version = Ver
 	app.EnableBashCompletion = true
-	app.CustomAppHelpTemplate = "add sv to your ~/.bashrc or ~/.zshrc. export PATH=\"$HOME/.sv/bin:$PATH\""
+	//app.CustomAppHelpTemplate = "add sv to your ~/.bashrc or ~/.zshrc. export PATH=\"$HOME/.sv/bin:$PATH\""
 	//app.Action = baseCmd
 	app.Commands = []*cli.Command{
 		{
