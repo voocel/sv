@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/urfave/cli/v2"
 )
@@ -23,6 +24,7 @@ func main() {
 	app := cli.NewApp()
 	app.Usage = "switch version"
 	app.Version = Ver
+	app.Compiled = time.Now()
 	app.EnableBashCompletion = true
 	//app.CustomAppHelpTemplate = "add sv to your ~/.bashrc or ~/.zshrc. export PATH=\"$HOME/.sv/bin:$PATH\""
 	//app.Action = baseCmd

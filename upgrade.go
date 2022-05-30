@@ -34,7 +34,7 @@ func NewUpgrade() *Upgrade {
 }
 
 func (u *Upgrade) checkUpgrade() error {
-	Info("check version...")
+	println(CyanText("checking version..."))
 	resp, err := http.Get(upgradeApi)
 	if err != nil {
 		return err
@@ -58,7 +58,7 @@ func (u *Upgrade) upgrade() error {
 	filename := filepath.Base(u.downloadURL)
 	path := filepath.Join(svBin, filename)
 
-	Info("downloading the newest version...")
+	println(BlueText("downloading the newest version..."))
 	resp, err := http.Get(u.downloadURL)
 	if err != nil {
 		return err
@@ -75,6 +75,6 @@ func (u *Upgrade) upgrade() error {
 		return err
 	}
 
-	Info("upgrade success!")
+	println(GreenText("upgrade success!"))
 	return os.Rename(filepath.Join(svBin, filename), filepath.Join(svBin, "sv"))
 }

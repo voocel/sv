@@ -22,12 +22,12 @@ func (w writer) Write(b []byte) (n int, err error) {
 }
 
 const (
-	red    = "\033[0;31;1m"
-	yellow = "\033[0;33m"
-	white  = "\033[0;37m"
-	cyan   = "\033[0;36m"
-	blue   = "\033[0;34;1m"
-	end    = "\033[0m"
+	redLog    = "\033[0;31;1m"
+	yellowLog = "\033[0;33m"
+	whiteLog  = "\033[0;37m"
+	cyanLog   = "\033[0;36m"
+	blueLog   = "\033[0;34;1m"
+	end       = "\033[0m"
 )
 
 func init() {
@@ -52,12 +52,12 @@ func New() (l *Logger) {
 		w: true,
 		e: true,
 	}
-	if runtime.GOOS == "linux" {
-		l.T.SetPrefix(blue + l.T.Prefix() + end)
-		l.D.SetPrefix(cyan + l.D.Prefix() + end)
-		l.I.SetPrefix(white + l.I.Prefix() + end)
-		l.W.SetPrefix(yellow + l.W.Prefix() + end)
-		l.E.SetPrefix(red + l.E.Prefix() + end)
+	if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
+		l.T.SetPrefix(blueLog + l.T.Prefix() + end)
+		l.D.SetPrefix(cyanLog + l.D.Prefix() + end)
+		l.I.SetPrefix(whiteLog + l.I.Prefix() + end)
+		l.W.SetPrefix(yellowLog + l.W.Prefix() + end)
+		l.E.SetPrefix(redLog + l.E.Prefix() + end)
 	}
 	if strings.TrimSpace(strings.ToLower(os.Getenv("LOGGER"))) != "" {
 		l.SetLevel(strings.TrimSpace(strings.ToLower(os.Getenv("LOGGER"))))
@@ -145,6 +145,10 @@ func Errorf(format string, v ...interface{}) {
 	l.Errorf(format, v...)
 }
 
+func Panicf(format string, v ...interface{}) {
+	l.Panicf(format, v...)
+}
+
 func Trace(v ...interface{}) {
 	l.Tracef(fmt.Sprint(v...))
 }
@@ -163,6 +167,10 @@ func Warn(v ...interface{}) {
 
 func Error(v ...interface{}) {
 	l.Errorf(fmt.Sprint(v...))
+}
+
+func Panic(v ...interface{}) {
+	l.Panicf(fmt.Sprint(v...))
 }
 
 func (l *Logger) Tracef(format string, v ...interface{}) {
@@ -193,4 +201,11 @@ func (l *Logger) Errorf(format string, v ...interface{}) {
 	if l.e {
 		l.E.Output(3, fmt.Sprintf(format, v...))
 	}
+}
+
+func (l *Logger) Panicf(format string, v ...interface{}) {
+	if l.e {
+		l.E.Output(3, fmt.Sprintf(format, v...))
+	}
+	panic(fmt.Sprintf(format, v...))
 }
