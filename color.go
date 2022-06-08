@@ -5,7 +5,10 @@ import "fmt"
 const (
 	reset = iota
 	bold
-	black = iota + 28
+)
+
+const (
+	black = iota + 30
 	red
 	green
 	yellow
@@ -13,6 +16,7 @@ const (
 	pink
 	cyan
 	gray
+
 	white = 97
 )
 
