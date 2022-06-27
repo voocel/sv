@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -10,16 +11,23 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 type Downloader struct {
 	concurrency int
 	resume      bool
 	bar         *Bar
+	client      *http.Client
 }
 
 func NewDownloader(concurrency int) *Downloader {
-	return &Downloader{concurrency: concurrency}
+	return &Downloader{
+		concurrency: concurrency,
+		client: &http.Client{
+			Timeout: time.Second * 10,
+		},
+	}
 }
 
 func (d *Downloader) Download(strURL, filename string) error {
@@ -27,7 +35,7 @@ func (d *Downloader) Download(strURL, filename string) error {
 		filename = filepath.Base(strURL)
 	}
 
-	resp, err := http.Head(strURL)
+	resp, err := d.client.Head(strURL)
 	if err != nil {
 		return err
 	}
@@ -83,7 +91,7 @@ func (d *Downloader) multiDownload(strURL, filename string, contentLen int64) er
 }
 
 func (d *Downloader) singleDownload(strURL, filename string) error {
-	resp, err := http.Get(strURL)
+	resp, err := d.client.Get(strURL)
 	if err != nil {
 		return err
 	}
@@ -115,6 +123,9 @@ func (d *Downloader) downloadPartial(strURL, filename string, rangeStart, rangeE
 	}
 
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", rangeStart, rangeEnd))
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+	req.WithContext(ctx)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		log.Fatal(err)

@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/AlecAivazis/survey/v2"
 )
@@ -15,7 +16,8 @@ import (
 const baseUrl = "https://studygolang.com"
 
 type app struct {
-	opts *startOpts
+	opts   *startOpts
+	client *http.Client
 }
 
 type startOpts struct {
@@ -27,6 +29,9 @@ type startOpts struct {
 func newApp(opts *startOpts) *app {
 	return &app{
 		opts: opts,
+		client: &http.Client{
+			Timeout: time.Second * 10,
+		},
 	}
 }
 
@@ -70,7 +75,7 @@ func (a *app) Start() (err error) {
 
 func (a *app) list() error {
 	if a.opts.remote {
-		resp, err := http.Get(baseUrl + "/dl")
+		resp, err := a.client.Get(baseUrl + "/dl")
 		if err != nil {
 			return err
 		}
