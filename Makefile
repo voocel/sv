@@ -1,6 +1,11 @@
 default:build
 
-.PHONY:build
+.PHONY: \
+	build \
+	clean \
+	help \
+	version
+
 build: build-linux-amd64 build-linux-arm64 build-darwin-amd64 build-darwin-arm64 build-windows-amd64
 
 build-linux-amd64:
@@ -28,6 +33,21 @@ build-windows-amd64:
 	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags '-w -s' -o svbin/sv-windows-amd-64.exe
 	echo "build successfully windows amd 64"
 
-.PHONY: clean
 clean:
 	rm -f svbin/*
+
+help:
+	@echo 'Usage: make <OPTIONS> ... <TARGETS>'
+	@echo ''
+	@echo 'Available targets are:'
+	@echo ''
+	@echo '    help               Show this help screen'
+	@echo '    build           	  Compile a program into an executable file'
+	@echo '    clean              Clean all executable files'
+	@echo '    version            Display Go version'
+	@echo ''
+	@echo 'Targets run by default is: build'
+	@echo ''
+
+version:
+	@go version
