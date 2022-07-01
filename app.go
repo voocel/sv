@@ -113,7 +113,7 @@ func (a *app) list() error {
 
 func (a *app) selectVersions(versions []string) (target string, err error) {
 	if len(versions) == 0 {
-		return "", errors.New("no available versions locally to select")
+		return "", errors.New("no available versions locally to select, you can use -r for get remote versions")
 	}
 
 	surveyIcon := func() survey.AskOpt {
