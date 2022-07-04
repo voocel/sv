@@ -81,6 +81,8 @@ func (p *Package) useDownloaded() error {
 	if err := Extract(svCache, filepath.Join(svDownload, p.Name)); err != nil {
 		return err
 	}
+	GreenText("extract success")
+
 	if err := os.Rename(filepath.Join(svCache, "go"), filepath.Join(svCache, p.Tag)); err != nil {
 		return err
 	}

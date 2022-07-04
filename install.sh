@@ -163,34 +163,34 @@ get_sv_bin () {
        Linux*)
           case $ARCH in
             arm64)
-              GOBREW_ARCH_BIN="sv-linux-arm-64"
+              SV_BIN="sv-linux-arm-64"
               ;;
             aarch64)
-              GOBREW_ARCH_BIN="sv-linux-arm-64"
+              SV_BIN="sv-linux-arm-64"
               ;;
             *)
-              GOBREW_ARCH_BIN="sv-linux-amd-64"
+              SV_BIN="sv-linux-amd-64"
               ;;
           esac
           ;;
        Darwin*)
           case $ARCH in
             arm64)
-              GOBREW_ARCH_BIN="sv-darwin-arm-64"
+              SV_BIN="sv-darwin-arm-64"
               ;;
             *)
-              GOBREW_ARCH_BIN="sv-darwin-64"
+              SV_BIN="sv-darwin-64"
               ;;
           esac
           ;;
        Windows*)
-          GOBREW_ARCH_BIN="sv-windows-64.exe"
+          SV_BIN="sv-windows-64.exe"
           ;;
     esac
 }
 
 main() {
-    local release="v1.0.0"
+    local release="v1.0.2"
 #     local os="$(uname -s | awk '{print tolower($0)}')"
     local os=`get_os|tr "[A-Z]" "[a-z]"`
     print_banner
@@ -203,6 +203,11 @@ main() {
     echo "[1/2] Downloading sv to the /usr/local/bin"
     check_curl
     get_sv_bin
+
+    if [ ! -d $HOME/.sv/bin ];then
+        mkdir -p $HOME/.sv/bin
+    fi
+    echo https://github.com/voocel/sv/releases/download/$release/$SV_BIN
     curl -kLs https://github.com/voocel/sv/releases/download/$release/$SV_BIN -o $HOME/.sv/bin/sv
     chmod +x $HOME/.sv/bin/sv
     echo "Installed successfully to: $HOME/.sv/bin/sv"

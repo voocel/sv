@@ -42,7 +42,7 @@ help:
 	@echo 'Available targets are:'
 	@echo ''
 	@echo '    help               Show this help screen'
-	@echo '    build           	  Compile a program into an executable file'
+	@echo '    build              Compile a program into an executable file'
 	@echo '    clean              Clean all executable files'
 	@echo '    version            Display Go version'
 	@echo ''

@@ -14,7 +14,7 @@ import (
 )
 
 func Extract(dst, src string) error {
-	println(CyanText("extracting..."))
+	CyanText("extracting...")
 	switch {
 	case strings.HasSuffix(src, ".tar.gz"), strings.HasSuffix(src, ".tgz"):
 		return UnpackTar(dst, src)
@@ -40,12 +40,6 @@ func UnpackTar(dst, src string) error {
 		}
 		defer fileReader.Close()
 	}
-
-	fileInfo, _ := file.Stat()
-	bar := NewBar(fileInfo.Size() * 3)
-	bar.Empty = "□"
-	bar.Filled = "■"
-	bar.Prefix = "Unpacking"
 
 	tr := tar.NewReader(fileReader)
 	for {
@@ -76,7 +70,7 @@ func UnpackTar(dst, src string) error {
 				return err
 			}
 
-			if _, err := io.Copy(io.MultiWriter(outFile, bar), tr); err != nil {
+			if _, err := io.Copy(outFile, tr); err != nil {
 				return err
 			}
 			outFile.Close()
