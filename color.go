@@ -17,8 +17,23 @@ const (
 	cyan
 	gray
 
-	white = 97
+	white   = 97
+	unknown = 999
 )
+
+var colorMap = map[int]string{
+	bold:    "bold",
+	black:   "black",
+	red:     "red",
+	green:   "green",
+	yellow:  "yellow",
+	blue:    "blue",
+	pink:    "pink",
+	cyan:    "cyan",
+	gray:    "gray",
+	white:   "white",
+	unknown: "unknown",
+}
 
 func SetColor(msg string, conf, bg, text int) string {
 	return fmt.Sprintf("%c[%d;%d;%dm%s%c[0m", 0x1B, conf, bg, text, msg, 0x1B)
@@ -62,4 +77,21 @@ func GrayText(s string) {
 
 func WhiteText(s string) {
 	println(SetColor(s, 0, 0, white))
+}
+
+func codeReason(code int) string {
+	v, ok := colorMap[code]
+	if !ok {
+		v = colorMap[unknown]
+	}
+	return v
+}
+
+func colorToCode(s string) int {
+	for k := range colorMap {
+		if colorMap[k] == s {
+			return k
+		}
+	}
+	return unknown
 }

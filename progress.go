@@ -57,9 +57,11 @@ func (b *Bar) listenRate() {
 		select {
 		case <-tick.C:
 			r := b.current - b.prev
-			b.rate = "[" + b.bytesToSize(r*10) + "/s]"
+			b.rate = "[" + b.bytesToSize(r*10) + "/s]  "
+			b.rate = SetColor(b.rate, 0, 0, yellow)
 			b.prev = b.current
 		case <-b.done:
+			fmt.Println()
 			return
 		}
 	}
@@ -74,9 +76,36 @@ func (b *Bar) template(s string) {
 	b.tmpl = t
 }
 
-// Text set the text value
-func (b *Bar) Text(s string) {
+// SetText set the text value
+func (b *Bar) SetText(s string, color ...string) {
 	b.text = s
+	if len(color) > 0 {
+		b.text = SetColor(b.text, 0, 0, colorToCode(color[0]))
+	}
+}
+
+// SetPrefix set the prefix value
+func (b *Bar) SetPrefix(s string, color ...string) {
+	b.Prefix = s
+	if len(color) > 0 {
+		b.Prefix = SetColor(b.Prefix, 0, 0, colorToCode(color[0]))
+	}
+}
+
+// SetFilled set the filled value
+func (b *Bar) SetFilled(s string, color ...string) {
+	b.Filled = s
+	if len(color) > 0 {
+		b.Filled = SetColor(b.Filled, 0, 0, colorToCode(color[0]))
+	}
+}
+
+// SetEmpty set the empty value
+func (b *Bar) SetEmpty(s string, color ...string) {
+	b.Empty = s
+	if len(color) > 0 {
+		b.Empty = SetColor(b.Empty, 0, 0, colorToCode(color[0]))
+	}
 }
 
 // Add the specified amount to the progressbar
@@ -112,6 +141,7 @@ func (b *Bar) string() string {
 		Total:   b.formatTotal(),
 	}
 
+	data.Total = SetColor(b.formatTotal(), 0, 0, green)
 	if err := b.tmpl.Execute(&buf, data); err != nil {
 		panic(err)
 	}
