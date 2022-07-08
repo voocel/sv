@@ -11,13 +11,8 @@ set -eu
 GOROOT=${GOROOT:-$HOME/.sv/go}
 
 if [ "$(echo "$GOROOT" | cut -c1)" != "/" ]; then
-    error_and_abort "\$GOROOT must be an absolute path but it is set to $GOROOT"
+    print_error "$GOROOT must be an absolute path but it is set to $GOROOT"
 fi
-
-error_and_abort() {
-    printf '\n  %s: %s\n\n' "ERROR" "$*" >&2
-    exit 1
-}
 
 print_banner() {
     cat <<-'EOF'
@@ -42,28 +37,21 @@ print_banner() {
 EOF
 }
 
+setup_color() {
+    RESET=$(printf '\033[0m')
+    BOLD=$(printf '\033[1m')
+    RED=$(printf '\033[31m')
+    GREEN=$(printf '\033[32m')
+    YELLOW=$(printf '\033[33m')
+    BLUE=$(printf '\033[34m')
+    PINK=$(printf '\033[35m')
+    CYAN=$(printf '\033[36m')
+    GRAY=$(printf '\033[37m')
+}
 
-print_message() {
-    local message
-    local severity
-    local red
-    local green
-    local yellow
-    local nc
-
-    message="${1}"
-    severity="${2}"
-    red='\e[0;31m'
-    green='\e[0;32m'
-    yellow='\e[1;33m'
-    nc='\e[0m'
-
-    case "${severity}" in
-        "info" ) echo -e "${nc}${message}${nc}";;
-        "ok" ) echo -e "${green}${message}${nc}";;
-        "error" ) echo -e "${red}${message}${nc}";;
-        "warn" ) echo -e "${yellow}${message}${nc}";;
-    esac
+print_error() {
+    printf '%sError: %s%s\n' "${BOLD}${RED}" "$*" "${RESET}" >&2
+    exit 1
 }
 
 get_os() {
@@ -81,7 +69,7 @@ get_os() {
     fi
 }
 
-get_arch () {
+get_arch() {
     local arch=""
     local arch_check=${ASDF_GOLANG_OVERWRITE_ARCH:-"$(uname -m)"}
     case "${arch_check}" in
@@ -91,7 +79,7 @@ get_arch () {
         aarch64|arm64) arch="arm64"; ;;
         ppc64le) arch="ppc64le"; ;;
         *)
-            fail "Arch '${arch_check}' not supported!"
+            print_error "Arch '${arch_check}' not supported!"
             ;;
     esac
     printf "%s" "$arch"
@@ -106,13 +94,13 @@ get_platform () {
             [ -z "$silent" ] && msg "Platform '${platform}' supported!"
             ;;
         *)
-            fail "Platform '${platform}' not supported!"
+            print_error "Platform '${platform}' not supported!"
             ;;
     esac
     printf "%s" "$platform"
 }
 
-get_shell_profile () {
+get_shell_profile() {
     if [ -n "$($SHELL -c 'echo $ZSH_VERSION')" ]; then
         shell_profile="$HOME/.zshrc"
     elif [ -n "$($SHELL -c 'echo $BASH_VERSION')" ]; then
@@ -120,7 +108,7 @@ get_shell_profile () {
     fi
 }
 
-set_env () {
+set_env() {
 cat>"$HOME/.sv/env"<<EOF
 #!/bin/sh
 # sv shell setup
@@ -135,27 +123,26 @@ esac
 EOF
 }
 
-init_env () {
+init_env() {
     local envStr='. "$HOME/.sv/env"'
-    if grep -q "$envStr" "$HOME/${shell_profile}"; then
-        echo "SV env has exists in $shell_profile"
+    if grep -q "$envStr" "${shell_profile}"; then
+        echo "${BLUE}SV env has exists in $shell_profile${RESET}"
     else
-        echo $envStr >> "$HOME/${shell_profile}"
+        echo $envStr >> "${shell_profile}"
     fi
 
-    . $HOME/${shell_profile}
+    . ${shell_profile}
+    source ${shell_profile}
 }
 
-check_curl () {
+check_curl() {
     if !(test -x "$(command -v curl)"); then
-        printf "\e[1;31mYou must pre-install the curl tool\e[0m\n"
-        exit 1
+        print_error "You must pre-install the curl tool"
     fi
 }
 
-get_sv_bin () {
+get_sv_bin() {
     SV_BIN=''
-
     THISOS=$(uname -s)
     ARCH=$(uname -m)
 
@@ -190,8 +177,9 @@ get_sv_bin () {
 }
 
 main() {
+    setup_color
     local release="v1.0.2"
-#     local os="$(uname -s | awk '{print tolower($0)}')"
+    # local os="$(uname -s | awk '{print tolower($0)}')"
     local os=`get_os|tr "[A-Z]" "[a-z]"`
     print_banner
     echo $os
@@ -200,7 +188,7 @@ main() {
         . ~/.bash_profile
     fi
 
-    echo "[1/2] Downloading sv to the /usr/local/bin"
+    echo "${YELLOW}[1/2] Downloading sv to the /usr/local/bin${RESET}"
     check_curl
     get_sv_bin
 
@@ -210,13 +198,15 @@ main() {
     echo https://github.com/voocel/sv/releases/download/$release/$SV_BIN
     curl -kLs https://github.com/voocel/sv/releases/download/$release/$SV_BIN -o $HOME/.sv/bin/sv
     chmod +x $HOME/.sv/bin/sv
-    echo "Installed successfully to: $HOME/.sv/bin/sv"
+    echo "${GREEN}Installed successfully to: $HOME/.sv/bin/sv${RESET}"
 
-    echo "[2/2] Setting environment variables"
+    echo "${YELLOW}[2/2] Setting environment variables${RESET}"
     set_env
     get_shell_profile
+    echo ${shell_profile}
+    source ${shell_profile}
     init_env
-    echo "Set env successfully"
+    echo "${GREEN}Set env successfully${RESET}"
 
 
 #  [ -z "$GOROOT" ] && GOROOT="$HOME/.go"
