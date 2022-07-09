@@ -176,9 +176,19 @@ get_sv_bin() {
     esac
 }
 
+get_latest_tag() {
+    release=$(curl -s "https://api.github.com/repos/voocel/sv/releases/latest" | grep '"tag_name":' | cut -d'"' -f4)
+}
+
 main() {
     setup_color
-    local release="v1.0.2"
+    echo "${YELLOW}[1/3] Get sv latest version${RESET}"
+    get_latest_tag
+    if [ -z "$release" ]; then
+        print_error "Get sv latest version error"
+    fi
+    printf "${GREEN}The sv latest version is %s${RESET}\n" $release
+
     # local os="$(uname -s | awk '{print tolower($0)}')"
     local os=`get_os|tr "[A-Z]" "[a-z]"`
     print_banner
@@ -188,7 +198,7 @@ main() {
         . ~/.bash_profile
     fi
 
-    echo "${YELLOW}[1/2] Downloading sv to the /usr/local/bin${RESET}"
+    echo "${YELLOW}[2/3] Downloading sv to the /usr/local/bin${RESET}"
     check_curl
     get_sv_bin
 
@@ -200,11 +210,11 @@ main() {
     chmod +x $HOME/.sv/bin/sv
     echo "${GREEN}Installed successfully to: $HOME/.sv/bin/sv${RESET}"
 
-    echo "${YELLOW}[2/2] Setting environment variables${RESET}"
+    echo "${YELLOW}[3/3] Setting environment variables${RESET}"
     set_env
     get_shell_profile
     echo ${shell_profile}
-    source ${shell_profile}
+
     init_env
     echo "${GREEN}Set env successfully${RESET}"
 
