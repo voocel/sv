@@ -8,6 +8,7 @@
 
 set -eu
 
+GOPATH=${GOPATH:-$HOME/go}
 GOROOT=${GOROOT:-$HOME/.sv/go}
 
 if [ "$(echo "$GOROOT" | cut -c1)" != "/" ]; then
@@ -108,22 +109,24 @@ get_shell_profile() {
     fi
 }
 
-set_env() {
+gen_env() {
 cat>"$HOME/.sv/env"<<EOF
 #!/bin/sh
 # sv shell setup
 case ":${PATH}:" in
-    *:"$HOME/.sv/go/bin":*)
+    *:"$HOME/.sv/go/bin:$HOME/.sv/bin":*)
         ;;
     *)
-        export PATH="$HOME/.sv/go:$PATH"
-        export PATH="$HOME/.sv/bin:$PATH"
+        export GO111MODULE=auto
+        export GOROOT=$HOME/.sv/go
+        export GOPROXY=https://goproxy.cn,direct
+        export PATH="$HOME/.sv/go/bin:$HOME/.sv/bin:$PATH"
         ;;
 esac
 EOF
 }
 
-init_env() {
+set_env() {
     local envStr='. "$HOME/.sv/env"'
     if grep -q "$envStr" "${shell_profile}"; then
         echo "${BLUE}SV env has exists in $shell_profile${RESET}"
@@ -131,8 +134,7 @@ init_env() {
         echo $envStr >> "${shell_profile}"
     fi
 
-    . ${shell_profile}
-    source ${shell_profile}
+    # . ${shell_profile}
 }
 
 check_curl() {
@@ -185,14 +187,13 @@ main() {
     echo "${YELLOW}[1/3] Get sv latest version${RESET}"
     get_latest_tag
     if [ -z "$release" ]; then
-        print_error "Get sv latest version error"
+        print_error "Get sv latest version error, please try again"
     fi
     printf "${GREEN}The sv latest version is %s${RESET}\n" $release
 
     # local os="$(uname -s | awk '{print tolower($0)}')"
     local os=`get_os|tr "[A-Z]" "[a-z]"`
     print_banner
-    echo $os
 
     if [ -f ~/.bash_profile ]; then
         . ~/.bash_profile
@@ -205,17 +206,21 @@ main() {
     if [ ! -d $HOME/.sv/bin ];then
         mkdir -p $HOME/.sv/bin
     fi
-    echo https://github.com/voocel/sv/releases/download/$release/$SV_BIN
-    curl -kLs https://github.com/voocel/sv/releases/download/$release/$SV_BIN -o $HOME/.sv/bin/sv
+
+    download_url=https://github.com/voocel/sv/releases/download/$release/$SV_BIN
+    echo download_url
+    http_code=$(curl -I -w '%{http_code}' -s -o /dev/null "$download_url")
+    if [ "$http_code" -eq 404 ] || [ "$http_code" -eq 403 ]; then
+        print_error "URL: ${download_url} returned status ${http_code}"
+    fi
+    curl -kLs download_url -o $HOME/.sv/bin/sv
     chmod +x $HOME/.sv/bin/sv
     echo "${GREEN}Installed successfully to: $HOME/.sv/bin/sv${RESET}"
 
     echo "${YELLOW}[3/3] Setting environment variables${RESET}"
-    set_env
+    gen_env
     get_shell_profile
-    echo ${shell_profile}
-
-    init_env
+    set_env
     echo "${GREEN}Set env successfully${RESET}"
 
 
