@@ -76,5 +76,8 @@ func (u *Upgrade) upgrade() error {
 	}
 
 	GreenText("upgrade success!")
-	return os.Rename(filepath.Join(svBin, filename), filepath.Join(svBin, "sv"))
+	if err = os.Rename(filepath.Join(svBin, filename), filepath.Join(svBin, "sv")); err != nil {
+		return err
+	}
+	return os.Chmod(filepath.Join(svBin, "sv"), 0755)
 }

@@ -17,7 +17,7 @@ var (
 	svDownload string
 )
 
-const Ver = "v1.0.2"
+const Ver = "v1.1.2"
 
 func main() {
 	l.SetLevel("debug")
