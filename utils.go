@@ -14,7 +14,7 @@ import (
 )
 
 func Extract(dst, src string) error {
-	CyanText("extracting...")
+	PrintCyan("extracting...")
 	switch {
 	case strings.HasSuffix(src, ".tar.gz"), strings.HasSuffix(src, ".tgz"):
 		return UnpackTar(dst, src)

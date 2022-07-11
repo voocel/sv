@@ -14,6 +14,7 @@ const (
 )
 
 type Upgrade struct {
+	force       bool
 	latestTag   string
 	downloadURL string
 }
@@ -29,12 +30,12 @@ type Asset struct {
 	BrowserDownloadURL string `json:"browser_download_url"`
 }
 
-func NewUpgrade() *Upgrade {
-	return &Upgrade{}
+func NewUpgrade(force bool) *Upgrade {
+	return &Upgrade{force: force}
 }
 
 func (u *Upgrade) checkUpgrade() error {
-	CyanText("checking version...")
+	PrintCyan("Checking version...")
 	resp, err := http.Get(upgradeApi)
 	if err != nil {
 		return err
@@ -46,8 +47,8 @@ func (u *Upgrade) checkUpgrade() error {
 		return err
 	}
 
-	if versionCompare(Ver) >= versionCompare(latest.TagName) {
-		return errors.New("it's already the latest version")
+	if !u.force && versionCompare(Ver) >= versionCompare(latest.TagName) {
+		return errors.New(Blue("It's already the latest version" + "(" + latest.TagName + ")"))
 	}
 	u.downloadURL = latest.Assets[0].BrowserDownloadURL
 
@@ -58,7 +59,7 @@ func (u *Upgrade) upgrade() error {
 	filename := filepath.Base(u.downloadURL)
 	path := filepath.Join(svBin, filename)
 
-	BlueText("downloading the newest version...")
+	PrintBlue("Downloading the newest version...")
 	resp, err := http.Get(u.downloadURL)
 	if err != nil {
 		return err
@@ -75,7 +76,7 @@ func (u *Upgrade) upgrade() error {
 		return err
 	}
 
-	GreenText("upgrade success!")
+	PrintGreen("upgrade success!")
 	if err = os.Rename(filepath.Join(svBin, filename), filepath.Join(svBin, "sv")); err != nil {
 		return err
 	}

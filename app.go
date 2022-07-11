@@ -24,6 +24,7 @@ type startOpts struct {
 	cmd    string
 	target string
 	remote bool
+	force  bool
 }
 
 func newApp(opts *startOpts) *app {
@@ -33,6 +34,10 @@ func newApp(opts *startOpts) *app {
 			Timeout: time.Second * 10,
 		},
 	}
+}
+
+func genUrl()  {
+
 }
 
 func (a *app) Start() (err error) {
@@ -49,6 +54,7 @@ func (a *app) Start() (err error) {
 				Message: "Do you like to download and install from remote?",
 			}, &ok)
 			if ok {
+				p.URL = a.tagToURL(p.Tag)
 				return p.useRemote()
 			}
 		}
@@ -67,7 +73,7 @@ func (a *app) Start() (err error) {
 		p.Name = a.tagToName(p.Tag)
 		return p.remove()
 	case "upgrade":
-		u := NewUpgrade()
+		u := NewUpgrade(a.opts.force)
 		return u.checkUpgrade()
 	}
 	return
@@ -113,7 +119,7 @@ func (a *app) list() error {
 
 func (a *app) selectVersions(versions []string) (target string, err error) {
 	if len(versions) == 0 {
-		return "", errors.New("no available versions locally to select, you can use -r for get remote versions")
+		return "", errors.New(Red("No available versions locally to select, you can use -r for get remote versions"))
 	}
 
 	surveyIcon := func() survey.AskOpt {
@@ -149,4 +155,12 @@ func (a *app) tagToName(tag string) string {
 		ext = ".zip"
 	}
 	return fmt.Sprintf("%s.%s-%s%s", tag, runtime.GOOS, runtime.GOARCH, ext)
+}
+
+func (a *app) tagToURL(tag string) string {
+	name := a.tagToName(tag)
+	if strings.HasPrefix(tag, "v") {
+		name = strings.Replace(name, "v", "go", 1)
+	}
+	return fmt.Sprintf("/dl/golang/%s", name)
 }

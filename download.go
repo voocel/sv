@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,12 +16,22 @@ import (
 type Downloader struct {
 	concurrency int
 	resume      bool
+	tag         string
 	bar         *Bar
 	client      *http.Client
 }
 
-func NewDownloader(concurrency int) *Downloader {
+// PartMeta the file meta info
+type PartMeta struct {
+	Index float32
+	Start int64
+	End   int64
+	Cur   int64
+}
+
+func NewDownloader(concurrency int, tag string) *Downloader {
 	return &Downloader{
+		tag:         tag,
 		concurrency: concurrency,
 		client: &http.Client{
 			Timeout: time.Second * 10,
@@ -49,6 +58,7 @@ func (d *Downloader) Download(strURL, filename string) error {
 
 func (d *Downloader) multiDownload(strURL, filename string, contentLen int64) error {
 	d.bar = NewBar(contentLen)
+	d.bar.SetName("sv["+d.tag+"]", "pink")
 	defer d.bar.Close()
 
 	partSize := int(contentLen) / d.concurrency
@@ -80,7 +90,10 @@ func (d *Downloader) multiDownload(strURL, filename string, contentLen int64) er
 				}
 			}
 
-			d.downloadPartial(strURL, filename, rangeStart+downloaded, rangeEnd, i)
+			err := d.downloadPartial(strURL, filename, rangeStart+downloaded, rangeEnd, i)
+			if err != nil {
+				PrintRed(fmt.Sprintf("downloadPartial err: %v", err.Error()))
+			}
 		}(i, rangeStart)
 
 		rangeStart += partSize + 1
@@ -112,14 +125,14 @@ func (d *Downloader) singleDownload(strURL, filename string) error {
 	return err
 }
 
-func (d *Downloader) downloadPartial(strURL, filename string, rangeStart, rangeEnd, i int) {
+func (d *Downloader) downloadPartial(strURL, filename string, rangeStart, rangeEnd, i int) (err error) {
 	if rangeStart >= rangeEnd {
 		return
 	}
 
 	req, err := http.NewRequest("GET", strURL, nil)
 	if err != nil {
-		log.Fatal(err)
+		return
 	}
 
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", rangeStart, rangeEnd))
@@ -128,7 +141,7 @@ func (d *Downloader) downloadPartial(strURL, filename string, rangeStart, rangeE
 	req.WithContext(ctx)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		log.Fatal(err)
+		return
 	}
 	defer resp.Body.Close()
 
@@ -139,7 +152,7 @@ func (d *Downloader) downloadPartial(strURL, filename string, rangeStart, rangeE
 
 	partFile, err := os.OpenFile(d.getPartFilename(filename, i), flags, 0666)
 	if err != nil {
-		log.Fatal(err)
+		return
 	}
 	defer partFile.Close()
 
@@ -147,10 +160,11 @@ func (d *Downloader) downloadPartial(strURL, filename string, rangeStart, rangeE
 	_, err = io.CopyBuffer(io.MultiWriter(partFile, d.bar), resp.Body, buf)
 	if err != nil {
 		if err == io.EOF {
-			return
+			return nil
 		}
-		log.Fatal(err)
+		return err
 	}
+	return
 }
 
 func (d *Downloader) merge(filename string) error {

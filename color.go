@@ -35,48 +35,88 @@ var colorMap = map[int]string{
 	unknown: "unknown",
 }
 
-func SetColor(msg string, conf, bg, text int) string {
-	return fmt.Sprintf("%c[%d;%d;%dm%s%c[0m", 0x1B, conf, bg, text, msg, 0x1B)
+func SetColor(text string, conf, bg, color int) string {
+	return fmt.Sprintf("%c[%d;%d;%dm%s%c[0m", 0x1B, conf, bg, color, text, 0x1B)
 }
 
-func BlackText(s string) {
-	println(SetColor(s, 0, 0, black))
+func Bold(s string) string {
+	return SetColor(s, 0, 0, bold)
 }
 
-func BoldText(s string) {
-	println(SetColor(s, 0, 0, bold))
+func Black(s string) string {
+	return SetColor(s, 0, 0, black)
 }
 
-func RedText(s string) {
-	println(SetColor(s, 0, 0, red))
+func Red(s string) string {
+	return SetColor(s, 0, 0, red)
 }
 
-func GreenText(s string) {
-	println(SetColor(s, 0, 0, green))
+func Green(s string) string {
+	return SetColor(s, 0, 0, green)
 }
 
-func YellowText(s string) {
-	println(SetColor(s, 0, 0, yellow))
+func Yellow(s string) string {
+	return SetColor(s, 0, 0, yellow)
 }
 
-func BlueText(s string) {
-	println(SetColor(s, 0, 0, blue))
+func Blue(s string) string {
+	return SetColor(s, 0, 0, blue)
 }
 
-func PinkText(s string) {
-	println(SetColor(s, 0, 0, pink))
+func Pink(s string) string {
+	return SetColor(s, 0, 0, pink)
 }
 
-func CyanText(s string) {
-	println(SetColor(s, 0, 0, cyan))
+func Cyan(s string) string {
+	return SetColor(s, 0, 0, cyan)
 }
 
-func GrayText(s string) {
-	println(SetColor(s, 0, 0, gray))
+func Gray(s string) string {
+	return SetColor(s, 0, 0, gray)
 }
 
-func WhiteText(s string) {
-	println(SetColor(s, 0, 0, white))
+func White(s string) string {
+	return SetColor(s, 0, 0, white)
+}
+
+func PrintBold(s string) {
+	println(Bold(s))
+}
+
+func PrintBlack(s string) {
+	println(Black(s))
+}
+
+func PrintRed(s string) {
+	println(Red(s))
+}
+
+func PrintGreen(s string) {
+	println(Green(s))
+}
+
+func PrintYellow(s string) {
+	println(Yellow(s))
+}
+
+func PrintBlue(s string) {
+	println(Blue(s))
+}
+
+func PrintPink(s string) {
+	println(Pink(s))
+}
+
+func PrintCyan(s string) {
+	println(Cyan(s))
+}
+
+func PrintGray(s string) {
+	println(Gray(s))
+}
+
+func PrintWhite(s string) {
+	println(White(s))
 }
 
 func codeReason(code int) string {

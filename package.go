@@ -33,9 +33,9 @@ type Package struct {
 }
 
 func (p *Package) download() error {
-	d := NewDownloader(runtime.NumCPU())
+	d := NewDownloader(runtime.NumCPU(), p.Tag)
 	if p.URL == "" || p.Name == "" {
-		return errors.New("download URL is empty")
+		return errors.New(Red("Download URL is empty"))
 	}
 	return d.Download(baseUrl+p.URL, p.Name)
 }
@@ -81,7 +81,7 @@ func (p *Package) useDownloaded() error {
 	if err := Extract(svCache, filepath.Join(svDownload, p.Name)); err != nil {
 		return err
 	}
-	GreenText("extract success")
+	PrintGreen("extract success")
 
 	if err := os.Rename(filepath.Join(svCache, "go"), filepath.Join(svCache, p.Tag)); err != nil {
 		return err
@@ -105,7 +105,7 @@ func (p *Package) useLocal() error {
 	if inDownload(p.Name) {
 		return p.useDownloaded()
 	}
-	return errors.New("local does not exist")
+	return errors.New(Blue("local does not exist"))
 }
 
 func (p *Package) use() (err error) {

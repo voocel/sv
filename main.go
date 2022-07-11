@@ -73,6 +73,14 @@ func main() {
 			Usage:     "upgrade sv",
 			UsageText: "sv upgrade",
 			Action:    baseCmd,
+			Flags: []cli.Flag{
+				&cli.BoolFlag{
+					Name:     "force",
+					Aliases:  []string{"f"},
+					Usage:    "force upgrade",
+					Required: false,
+				},
+			},
 		},
 	}
 	app.Before = func(context *cli.Context) (err error) {
@@ -115,6 +123,7 @@ func runApp(c *cli.Context) (err error) {
 		cmd:    c.Command.Name,
 		target: c.Args().First(),
 		remote: c.Bool("remote"),
+		force:  c.Bool("force"),
 	}
 	a := newApp(opts)
 	err = a.Start()
