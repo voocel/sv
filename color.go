@@ -5,6 +5,14 @@ import "fmt"
 const (
 	reset = iota
 	bold
+	fuzzy
+	italic
+	underscore
+	blink
+	fastBlink
+	reverse
+	concealed
+	strikethrough
 )
 
 const (
