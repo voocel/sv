@@ -102,10 +102,19 @@ get_platform () {
 }
 
 get_shell_profile() {
-    if [ -n "$($SHELL -c 'echo $ZSH_VERSION')" ]; then
-        shell_profile="$HOME/.zshrc"
-    elif [ -n "$($SHELL -c 'echo $BASH_VERSION')" ]; then
+    shell_profile=""
+    if [[ "${SHELL}" == *"bash"* ]]; then
+      if [[ -f "$HOME/.bashrc" ]]; then
         shell_profile="$HOME/.bashrc"
+      elif [[ -f "$HOME/.bash_profile" ]]; then
+        shell_profile="$HOME/.bash_profile"
+      fi
+    elif [[ "${SHELL}" == *"zsh"* ]]; then
+      shell_profile="$HOME/.zshrc"
+    fi
+
+    if [[ -z "$shell_profile" ]]; then
+       print_error "Get shell_profile error, please set .bashrc"
     fi
 }
 
@@ -135,6 +144,7 @@ set_env() {
     fi
 
     # . ${shell_profile}
+    # source $shell_profile
 }
 
 check_curl() {
@@ -179,13 +189,14 @@ get_sv_bin() {
 }
 
 get_latest_tag() {
-    release=$(curl -s "https://api.github.com/repos/voocel/sv/releases/latest" | grep '"tag_name":' | cut -d'"' -f4)
+    local release=$(curl -s "https://api.github.com/repos/voocel/sv/releases/latest" | grep '"tag_name":' | cut -d'"' -f4)
+    echo "$release"
 }
 
 main() {
     setup_color
     echo "${YELLOW}[1/3] Get sv latest version${RESET}"
-    get_latest_tag
+    local release="$(get_latest_tag)"
     if [ -z "$release" ]; then
         print_error "Get sv latest version error, please try again"
     fi
