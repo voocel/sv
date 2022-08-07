@@ -36,10 +36,6 @@ func newApp(opts *startOpts) *app {
 	}
 }
 
-func genUrl()  {
-
-}
-
 func (a *app) Start() (err error) {
 	p := &Package{}
 	switch a.opts.cmd {
