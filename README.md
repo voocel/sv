@@ -7,6 +7,8 @@ SV is a great open source beautiful Go Version Manager
 
 **English** | [中文](./README.zh-CN.md)
 
+![Example](./sv1.gif)
+
 ## 🏆 Purpose
 Allows you to easily build and switch different Golang versions
 
