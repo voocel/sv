@@ -7,6 +7,8 @@
 
 **English** | [中文](./README.zh-CN.md)
 
+![Example](./sv1.gif)
+
 ## 🏆 期望
 方便你轻松构建和切换不同的Golang版本
 
