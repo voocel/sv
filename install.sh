@@ -56,10 +56,10 @@ print_error() {
 }
 
 get_os() {
-    local uname_out
+    uname_out=""
     if command -v uname >/dev/null 2>&1; then
         uname_out="$(uname)"
-        if [[ "${uname_out}" == "" ]]; then
+        if [ "${uname_out}" = "" ]; then
             return 1
         else
             echo "${uname_out}"
@@ -71,8 +71,9 @@ get_os() {
 }
 
 get_arch() {
-    local arch=""
-    local arch_check=${ASDF_GOLANG_OVERWRITE_ARCH:-"$(uname -m)"}
+    arch=""
+    # silent=${1:-}
+    arch_check=${ASDF_GOLANG_OVERWRITE_ARCH:-"$(uname -m)"}
     case "${arch_check}" in
         x86_64|amd64) arch="amd64"; ;;
         i686|i386|386) arch="386"; ;;
@@ -84,21 +85,6 @@ get_arch() {
             ;;
     esac
     printf "%s" "$arch"
-}
-
-get_platform () {
-    local silent=${1:-}
-    local platform=""
-    platform="$(uname | tr '[:upper:]' '[:lower:]')"
-    case "$platform" in
-        linux|darwin|freebsd)
-            [ -z "$silent" ] && msg "Platform '${platform}' supported!"
-            ;;
-        *)
-            print_error "Platform '${platform}' not supported!"
-            ;;
-    esac
-    printf "%s" "$platform"
 }
 
 get_shell_profile() {
@@ -113,8 +99,8 @@ get_shell_profile() {
       shell_profile="$HOME/.zshrc"
     fi
 
-    if [[ -z "$shell_profile" ]]; then
-       print_error "Get shell_profile error, please set .bashrc"
+    if [ -z "$shell_profile" ]; then
+       print_error "Get shell profile error, please set .bashrc"
     fi
 }
 
@@ -127,6 +113,7 @@ case ":${PATH}:" in
         ;;
     *)
         export GO111MODULE=auto
+        export SVHOME=$HOME/.sv
         export GOROOT=$HOME/.sv/go
         export GOPROXY=https://goproxy.cn,direct
         export PATH="$HOME/.sv/go/bin:$HOME/.sv/bin:$PATH"
@@ -136,7 +123,7 @@ EOF
 }
 
 set_env() {
-    local envStr='. "$HOME/.sv/env"'
+    envStr='. "$HOME/.sv/env"'
     if grep -q "$envStr" "${shell_profile}"; then
         echo "${BLUE}SV env has exists in $shell_profile${RESET}"
     else
@@ -147,14 +134,15 @@ set_env() {
     # source $shell_profile
 }
 
+## Detect the curl
 check_curl() {
-    if !(test -x "$(command -v curl)"); then
+    if ! (test -x "$(command -v curl)"); then
         print_error "You must pre-install the curl tool"
     fi
 }
 
-get_sv_bin() {
-    SV_BIN=''
+get_svbin() {
+    svbin=''
     THISOS=$(uname -s)
     ARCH=$(uname -m)
 
@@ -162,28 +150,28 @@ get_sv_bin() {
        Linux*)
           case $ARCH in
             arm64)
-              SV_BIN="sv-linux-arm-64"
+              svbin="sv-linux-arm-64"
               ;;
             aarch64)
-              SV_BIN="sv-linux-arm-64"
+              svbin="sv-linux-arm-64"
               ;;
             *)
-              SV_BIN="sv-linux-amd-64"
+              svbin="sv-linux-amd-64"
               ;;
           esac
           ;;
        Darwin*)
           case $ARCH in
             arm64)
-              SV_BIN="sv-darwin-arm-64"
+              svbin="sv-darwin-arm-64"
               ;;
             *)
-              SV_BIN="sv-darwin-64"
+              svbin="sv-darwin-64"
               ;;
           esac
           ;;
        Windows*)
-          SV_BIN="sv-windows-64.exe"
+          svbin="sv-windows-64.exe"
           ;;
     esac
 }
@@ -203,29 +191,29 @@ main() {
     printf "${GREEN}The sv latest version is %s${RESET}\n" $release
 
     # local os="$(uname -s | awk '{print tolower($0)}')"
-    local os=`get_os|tr "[A-Z]" "[a-z]"`
+    os=`get_os|tr "[A-Z]" "[a-z]"`
     print_banner
 
-    if [ -f ~/.bash_profile ]; then
-        . ~/.bash_profile
+    if [ -f "$HOME/.bash_profile" ]; then
+        . "$HOME/.bash_profile"
     fi
 
     echo "${YELLOW}[2/3] Downloading sv to the /usr/local/bin${RESET}"
     check_curl
-    get_sv_bin
+    get_svbin
 
-    if [ ! -d $HOME/.sv/bin ];then
-        mkdir -p $HOME/.sv/bin
+    if [ ! -d "$HOME/.sv/bin" ];then
+        mkdir -p "$HOME/.sv/bin"
     fi
 
-    download_url=https://github.com/voocel/sv/releases/download/$release/$SV_BIN
+    download_url=https://github.com/voocel/sv/releases/download/$release/$svbin
     echo download_url
     http_code=$(curl -I -w '%{http_code}' -s -o /dev/null "$download_url")
     if [ "$http_code" -eq 404 ] || [ "$http_code" -eq 403 ]; then
         print_error "URL: ${download_url} returned status ${http_code}"
     fi
-    curl -kLs download_url -o $HOME/.sv/bin/sv
-    chmod +x $HOME/.sv/bin/sv
+    curl -kLs download_url -o "$HOME/.sv/bin/sv"
+    chmod +x "$HOME/.sv/bin/sv"
     echo "${GREEN}Installed successfully to: $HOME/.sv/bin/sv${RESET}"
 
     echo "${YELLOW}[3/3] Setting environment variables${RESET}"
@@ -234,11 +222,19 @@ main() {
     set_env
     echo "${GREEN}Set env successfully${RESET}"
 
-
 #  [ -z "$GOROOT" ] && GOROOT="$HOME/.go"
 #  [ -z "$GOPATH" ] && GOPATH="$HOME/go"
 #  mkdir -p "$GOPATH"/{src,pkg,bin} "$GOROOT"
 
 }
 
-main "$@" || exit 1
+set +u
+if [ -z "${SVHOME}" ]; then
+    set -u
+    main "$@" || exit 1
+else
+    echo "${YELLOW}Already installed!${RESET}"
+    echo "${YELLOW}You can delete the directory($HOME/.sv) and reinstall${RESET}"
+fi
+echo "${GREEN}end.${RESET}"
+set -u
