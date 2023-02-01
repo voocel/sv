@@ -41,7 +41,7 @@ func (p *Package) download() error {
 }
 
 func (p *Package) checkSum() (err error) {
-	f, err := os.Open(svDownload + "/" + p.Name)
+	f, err := os.Open(SVDownload + "/" + p.Name)
 	if err != nil {
 		return err
 	}
@@ -78,12 +78,12 @@ func (p *Package) useDownloaded() error {
 		}
 	}
 
-	if err := Extract(svCache, filepath.Join(svDownload, p.Name)); err != nil {
+	if err := Extract(SVCache, filepath.Join(SVDownload, p.Name)); err != nil {
 		return err
 	}
 	PrintGreen("extract success")
 
-	if err := os.Rename(filepath.Join(svCache, "go"), filepath.Join(svCache, p.Tag)); err != nil {
+	if err := os.Rename(filepath.Join(SVCache, "go"), filepath.Join(SVCache, p.Tag)); err != nil {
 		return err
 	}
 
@@ -123,22 +123,32 @@ func (p *Package) install() error {
 }
 
 func (p *Package) remove() error {
-	if err := p.removeLocal(); err != nil {
-		return err
-	}
-	return os.RemoveAll(svRoot)
+	return p.removeLocal()
 }
 
 func (p *Package) removeLocal() (err error) {
-	err = os.RemoveAll(filepath.Join(svCache, p.Tag))
+	tag := p.Tag
+	if strings.HasPrefix(tag, "v") {
+		tag = strings.Replace(tag, "v", "go", 1)
+	}
+	if !strings.HasPrefix(tag, "go") {
+		tag = "go" + tag
+	}
+
+	path, err := os.Readlink(SVRoot)
+	if err == nil && filepath.Base(path) == tag {
+		return errors.New("this version is in use")
+	}
+
+	err = os.RemoveAll(filepath.Join(SVCache, tag))
 	if err != nil {
 		return
 	}
-	return os.RemoveAll(filepath.Join(svDownload, p.Name))
+	return os.RemoveAll(filepath.Join(SVDownload, p.Name))
 }
 
 func (p *Package) getLocalVersion() (versions []string, err error) {
-	folder := filepath.Join(svCache, "*")
+	folder := filepath.Join(SVCache, "*")
 	versions, err = filepath.Glob(folder)
 	if err != nil {
 		return
@@ -150,23 +160,23 @@ func (p *Package) getLocalVersion() (versions []string, err error) {
 }
 
 func execute(tag string) (err error) {
-	if err = os.RemoveAll(svRoot); err != nil {
+	if err = os.RemoveAll(SVRoot); err != nil {
 		return err
 	}
-	if err = os.Symlink(filepath.Join(svCache, tag), svRoot); err != nil {
+	if err = os.Symlink(filepath.Join(SVCache, tag), SVRoot); err != nil {
 		return err
 	}
 
-	goBin := filepath.Join(svRoot, "bin", "go")
+	goBin := filepath.Join(SVRoot, "bin", "go")
 	cmd := exec.Command(goBin, "version")
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	newPath := filepath.Join(svRoot, "bin")
+	newPath := filepath.Join(SVRoot, "bin")
 	if p := os.Getenv("PATH"); p != "" {
 		newPath += string(filepath.ListSeparator) + p
 	}
-	cmd.Env = setEnv(append(os.Environ(), "GOROOT="+svRoot, "PATH="+newPath))
+	cmd.Env = setEnv(append(os.Environ(), "GOROOT="+SVRoot, "PATH="+newPath))
 	if err := cmd.Run(); err != nil {
 		os.Exit(1)
 	}
@@ -192,12 +202,12 @@ func ExecCommand(command string) (stdout, stderr string, err error) {
 }
 
 func inDownload(name string) bool {
-	path := filepath.Join(svDownload, name)
+	path := filepath.Join(SVDownload, name)
 	return Exists(path)
 }
 
 func inCache(tag string) bool {
-	path := filepath.Join(svCache, tag)
+	path := filepath.Join(SVCache, tag)
 	return Exists(path)
 }
 

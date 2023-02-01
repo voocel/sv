@@ -53,7 +53,7 @@ func (p *Parser) Stable() map[string]*Version {
 	return result
 }
 
-// AllVersions return all all versions
+// AllVersions return all versions
 func (p *Parser) AllVersions() map[string]*Version {
 	stables := p.Stable()
 	archives := p.Archived()

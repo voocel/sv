@@ -168,7 +168,7 @@ func (d *Downloader) downloadPartial(strURL, filename string, rangeStart, rangeE
 }
 
 func (d *Downloader) merge(filename string) error {
-	dstFile, err := os.OpenFile(svDownload+"/"+filename, os.O_CREATE|os.O_WRONLY, 0666)
+	dstFile, err := os.OpenFile(SVDownload+"/"+filename, os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
 		return err
 	}
@@ -189,7 +189,7 @@ func (d *Downloader) merge(filename string) error {
 }
 
 func (d *Downloader) getPartDir(filename string) string {
-	return svDownload + "/" + strings.SplitN(filepath.Base(filename), ".", 2)[0]
+	return SVDownload + "/" + strings.SplitN(filepath.Base(filename), ".", 2)[0]
 }
 
 func (d *Downloader) getPartFilename(filename string, partNum int) string {

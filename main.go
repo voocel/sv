@@ -10,14 +10,14 @@ import (
 )
 
 var (
-	svHome     string
-	svRoot     string
-	svBin      string
-	svCache    string
-	svDownload string
+	SVHome     string
+	SVRoot     string
+	SVBin      string
+	SVCache    string
+	SVDownload string
 )
 
-const Ver = "v1.1.3"
+const Ver = "v1.1.6"
 
 func main() {
 	l.SetLevel("debug")
@@ -88,18 +88,18 @@ func main() {
 		if err != nil {
 			return
 		}
-		svHome = filepath.Join(homeDir, ".sv")
-		svRoot = filepath.Join(svHome, "go")
-		svBin = filepath.Join(svHome, "bin")
-		svDownload = filepath.Join(svHome, "downloads")
-		svCache = filepath.Join(svHome, "cache")
-		if err = os.MkdirAll(svDownload, 0755); err != nil {
+		SVHome = filepath.Join(homeDir, ".sv")
+		SVRoot = filepath.Join(SVHome, "go")
+		SVBin = filepath.Join(SVHome, "bin")
+		SVDownload = filepath.Join(SVHome, "downloads")
+		SVCache = filepath.Join(SVHome, "cache")
+		if err = os.MkdirAll(SVDownload, 0755); err != nil {
 			return err
 		}
-		if err = os.MkdirAll(svCache, 0755); err != nil {
+		if err = os.MkdirAll(SVCache, 0755); err != nil {
 			return err
 		}
-		if err = os.MkdirAll(svBin, 0755); err != nil {
+		if err = os.MkdirAll(SVBin, 0755); err != nil {
 			return err
 		}
 		return

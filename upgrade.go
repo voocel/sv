@@ -57,7 +57,7 @@ func (u *Upgrade) checkUpgrade() error {
 
 func (u *Upgrade) upgrade() error {
 	filename := filepath.Base(u.downloadURL)
-	path := filepath.Join(svBin, filename)
+	path := filepath.Join(SVBin, filename)
 
 	PrintBlue("Downloading the newest version...")
 	resp, err := http.Get(u.downloadURL)
@@ -77,8 +77,8 @@ func (u *Upgrade) upgrade() error {
 	}
 
 	PrintGreen("upgrade success!")
-	if err = os.Rename(filepath.Join(svBin, filename), filepath.Join(svBin, "sv")); err != nil {
+	if err = os.Rename(filepath.Join(SVBin, filename), filepath.Join(SVBin, "sv")); err != nil {
 		return err
 	}
-	return os.Chmod(filepath.Join(svBin, "sv"), 0755)
+	return os.Chmod(filepath.Join(SVBin, "sv"), 0755)
 }
