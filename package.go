@@ -137,7 +137,7 @@ func (p *Package) removeLocal() (err error) {
 
 	path, err := os.Readlink(SVRoot)
 	if err == nil && filepath.Base(path) == tag {
-		return errors.New("this version is in use")
+		return errors.New(Red("[WARN]This version is in use, please use another version before uninstalling"))
 	}
 
 	err = os.RemoveAll(filepath.Join(SVCache, tag))

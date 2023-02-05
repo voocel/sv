@@ -59,7 +59,6 @@ func (d *Downloader) Download(strURL, filename string) error {
 func (d *Downloader) multiDownload(strURL, filename string, contentLen int64) error {
 	d.bar = NewBar(contentLen)
 	d.bar.SetName("sv["+d.tag+"]", "pink")
-	defer d.bar.Close()
 
 	partSize := int(contentLen) / d.concurrency
 	partDir := d.getPartDir(filename)
@@ -120,7 +119,6 @@ func (d *Downloader) singleDownload(strURL, filename string) error {
 
 	buf := make([]byte, 32*1024)
 	_, err = io.CopyBuffer(io.MultiWriter(f, d.bar), resp.Body, buf)
-	d.bar.Close()
 	//wt.Flush()
 	return err
 }
