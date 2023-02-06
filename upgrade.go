@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 const (
@@ -17,6 +18,7 @@ type Upgrade struct {
 	force       bool
 	latestTag   string
 	downloadURL string
+	client      *http.Client
 }
 
 type Release struct {
@@ -31,20 +33,26 @@ type Asset struct {
 }
 
 func NewUpgrade(force bool) *Upgrade {
-	return &Upgrade{force: force}
+	return &Upgrade{
+		force: force,
+		client: &http.Client{
+			Timeout: time.Second * 5,
+		},
+	}
 }
 
 func (u *Upgrade) checkUpgrade() error {
 	PrintCyan("Checking version...")
-	resp, err := http.Get(upgradeApi)
+	resp, err := u.client.Get(upgradeApi)
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 
 	latest := &Release{}
 	err = json.NewDecoder(resp.Body).Decode(latest)
 	if err != nil {
-		return err
+		return errors.New(Red("Get latest version information fail, please try again!"))
 	}
 
 	if !u.force && versionCompare(Ver) >= versionCompare(latest.TagName) {
@@ -60,7 +68,7 @@ func (u *Upgrade) upgrade() error {
 	path := filepath.Join(SVBin, filename)
 
 	PrintBlue("Downloading the newest version...")
-	resp, err := http.Get(u.downloadURL)
+	resp, err := u.client.Get(u.downloadURL)
 	if err != nil {
 		return err
 	}
