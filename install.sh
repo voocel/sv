@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # Pretty Go Version Manager
 #
@@ -89,6 +89,7 @@ get_arch() {
 
 get_shell_profile() {
     shell_profile=""
+    # shellcheck disable=SC2039
     if [[ "${SHELL}" == *"bash"* ]]; then
       if [[ -f "$HOME/.bashrc" ]]; then
         shell_profile="$HOME/.bashrc"
@@ -207,12 +208,13 @@ main() {
     fi
 
     download_url=https://github.com/voocel/sv/releases/download/$release/$svbin
-    echo download_url
-    http_code=$(curl -I -w '%{http_code}' -s -o /dev/null "$download_url")
-    if [ "$http_code" -eq 404 ] || [ "$http_code" -eq 403 ]; then
-        print_error "URL: ${download_url} returned status ${http_code}"
-    fi
-    curl -kLs download_url -o "$HOME/.sv/bin/sv"
+    echo "$download_url"
+#    http_code=$(curl -I -w '%{http_code}' -s -o /dev/null "$download_url")
+#    if [ "$http_code" -eq 404 ] || [ "$http_code" -eq 403 ]; then
+#        print_error "URL: ${download_url} returned status ${http_code}"
+#    fi
+#    curl -kLs download_url -o "$HOME/.sv/bin/sv"
+    wget ${download_url} -O "$HOME/.sv/bin/sv"
     chmod +x "$HOME/.sv/bin/sv"
     echo "${GREEN}Installed successfully to: $HOME/.sv/bin/sv${RESET}"
 
@@ -229,7 +231,7 @@ main() {
 }
 
 set +u
-if [ -z "${SVHOME}" ]; then
+if [ ! -d "${SVHOME}" ]; then
     set -u
     main "$@" || exit 1
 else

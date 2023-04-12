@@ -56,7 +56,7 @@ func (u *Upgrade) checkUpgrade() error {
 	}
 
 	if !u.force && versionCompare(Ver) >= versionCompare(latest.TagName) {
-		return errors.New(Blue("It's already the latest version" + "(" + latest.TagName + ")"))
+		return errors.New(Blue("You already have the latest version of SV" + "(" + latest.TagName + ")"))
 	}
 	u.downloadURL = latest.Assets[0].BrowserDownloadURL
 
