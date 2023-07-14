@@ -23,6 +23,7 @@ type app struct {
 type startOpts struct {
 	cmd    string
 	target string
+	latest string
 	remote bool
 	force  bool
 }

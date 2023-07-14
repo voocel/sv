@@ -62,6 +62,13 @@ func main() {
 			UsageText: "sv install <version>",
 			Action:    baseCmd,
 			Aliases:   []string{"i"},
+			Flags: []cli.Flag{
+				&cli.BoolFlag{
+					Name:     "latest",
+					Usage:    "install the latest version",
+					Required: false,
+				},
+			},
 		}, {
 			Name:      "uninstall",
 			Usage:     "uninstall a specific local version",
@@ -124,6 +131,7 @@ func runApp(c *cli.Context) (err error) {
 		target: c.Args().First(),
 		remote: c.Bool("remote"),
 		force:  c.Bool("force"),
+		latest: c.String("latest"),
 	}
 	a := newApp(opts)
 	err = a.Start()
