@@ -7,6 +7,8 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
+const releaseUrl = "https://go.dev/doc/devel/release"
+
 type Parser struct {
 	doc *goquery.Document
 }
@@ -80,4 +82,16 @@ func (p *Parser) findPackages(tag string, table *goquery.Selection) (pkgs []*Pac
 		})
 	})
 	return
+}
+
+type DateParser struct {
+	doc *goquery.Document
+}
+
+// NewDateParser return a new DOM tree parser
+func NewDateParser(reader io.Reader) *DateParser {
+	doc, _ := goquery.NewDocumentFromReader(reader)
+	return &DateParser{
+		doc: doc,
+	}
 }
