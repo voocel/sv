@@ -28,6 +28,7 @@ type Package struct {
 	OS        string
 	Arch      string
 	Size      string
+	released  string
 	Checksum  string
 	Algorithm string
 }

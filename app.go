@@ -82,11 +82,21 @@ func (a *app) list() error {
 		if err != nil {
 			return err
 		}
+		respDate, err := a.client.Get(releaseUrl)
+		if err != nil {
+			return err
+		}
 		parser := NewParser(resp.Body)
+		dateParser := NewDateParser(respDate.Body)
+
+		releases := dateParser.findReleaseDate()
+		parser.setReleases(releases)
+
 		archive := parser.AllVersions()
 		versions := make([]string, 0)
 		for name := range archive {
-			versions = append(versions, name)
+			release := releases[name]
+			versions = append(versions, fmt.Sprintf("%v (%v)", name, release))
 		}
 
 		target, err := a.selectVersions(versions)
