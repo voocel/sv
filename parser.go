@@ -128,5 +128,11 @@ func (p *DateParser) findReleaseDate() map[string]string {
 		}
 		p.releases[version] = date
 	})
+	p.doc.Find("article").Find("h2").Each(func(i int, selection *goquery.Selection) {
+		tmp := strings.Split(selection.Text(), " ")
+		if len(tmp) == 3 {
+			p.releases[tmp[0]] = strings.TrimRight(tmp[2], ")")
+		}
+	})
 	return p.releases
 }
