@@ -105,7 +105,7 @@ func (a *app) list() error {
 		}
 		targetPkg := a.getPackage(target, archive)
 		if targetPkg == nil {
-			return fmt.Errorf("not fount package: %s", target)
+			return fmt.Errorf("not fount package on this version: %s", target)
 		}
 
 		return targetPkg.use()
@@ -143,11 +143,18 @@ func (a *app) selectVersions(versions []string) (target string, err error) {
 		Help:    "Enter to install the selected version",
 		Options: versions,
 	}, &target, survey.WithValidator(survey.Required), surveyIcon())
+	if i := strings.Index(target, "("); i != -1 {
+		target = strings.TrimSpace(target[:i])
+	}
 	return
 }
 
 func (a *app) getPackage(target string, m map[string]*Version) *Package {
-	for _, v := range m[target].Packages {
+	archive, ok := m[target]
+	if !ok {
+		return nil
+	}
+	for _, v := range archive.Packages {
 		filename := a.tagToName(target)
 		if strings.HasPrefix(v.Name, filename) {
 			return v
