@@ -90,7 +90,7 @@ get_arch() {
 get_shell_profile() {
     shell_profile=""
     # shellcheck disable=SC2039
-    if [[ "${SHELL}" == *"bash"* ]]; then
+    if [[ "${SHELL}" == *"sh"* ]]; then
       if [[ -f "$HOME/.bashrc" ]]; then
         shell_profile="$HOME/.bashrc"
       elif [[ -f "$HOME/.bash_profile" ]]; then
