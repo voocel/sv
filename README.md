@@ -18,7 +18,7 @@ Allows you to easily build and switch different Golang versions
 ## ⬇️️ Install
 install a release from the command-line
 ```
-👉 curl -sL https://raw.githubusercontent.com/voocel/sv/main/install.sh -o - | sudo bash
+👉 curl -sL https://raw.githubusercontent.com/voocel/sv/main/install.sh -o - | sh
 ```
 
 ## 🔥 Features
