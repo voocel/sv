@@ -188,14 +188,14 @@ func (b *Bar) bar() string {
 func (b *Bar) Render(w io.Writer) int64 {
 	s := fmt.Sprintf("\x1bM\r %s", b.string())
 	//fmt.Print("\033[2K\033[0G")
-	fmt.Print("\x1B7")     // save the cursor position
-	fmt.Print("\x1B[2K")   // erase the entire line
-	fmt.Print("\x1B[0J")   // erase from cursor to end of screen
-	fmt.Print("\x1B[?47h") // save screen
-	fmt.Print("\x1B[1J")   // erase from cursor to beginning of screen
+	fmt.Print("\x1B7") // save the cursor position
+	// fmt.Print("\x1B[2K")   // erase the entire line
+	fmt.Print("\x1B[0J") // erase from cursor to end of screen
+	// fmt.Print("\x1B[?47h") // save screen
+	// fmt.Print("\x1B[1J")   // erase from cursor to beginning of screen
 	fmt.Print("\x1B[?47l") // restore screen
 	io.WriteString(w, s)
-	fmt.Print("\x1B8") // restore the cursor position util new size is calculated
+	// fmt.Print("\x1B8") // restore the cursor position util new size is calculated
 	return int64(len(s))
 }
 
@@ -222,4 +222,8 @@ func (b *Bar) bytesToSize(bytes int64) string {
 // Close the rate listen
 func (b *Bar) Close() {
 	close(b.done)
+
+	// close(b.done)
+	// fmt.Print("\r\033[K") // 清除当前行
+	// fmt.Println() // 移动到下一行
 }
