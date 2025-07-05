@@ -189,12 +189,40 @@ func (b *Bar) formatTotal() string {
 
 // Bar return the progress bar string
 func (b *Bar) bar() string {
-	p := float64(b.current) / float64(b.total)
-	filled := math.Ceil(float64(b.Width) * p)
-	empty := math.Floor(float64(b.Width) - filled)
+	var p float64
+	if b.total > 0 {
+		p = float64(b.current) / float64(b.total)
+	}
+
+	// Ensure progress ratio is between 0-1
+	if p < 0 {
+		p = 0
+	} else if p > 1 {
+		p = 1
+	}
+
+	// Ensure width is reasonable
+	width := b.Width
+	if width <= 0 {
+		width = defaultBarWidth
+	}
+
+	filled := math.Ceil(float64(width) * p)
+	empty := math.Floor(float64(width) - filled)
+
+	// Ensure repeat count is not negative
+	filledCount := int(filled)
+	emptyCount := int(empty)
+	if filledCount < 0 {
+		filledCount = 0
+	}
+	if emptyCount < 0 {
+		emptyCount = 0
+	}
+
 	s := b.StartDelimiter
-	s += strings.Repeat(b.Filled, int(filled))
-	s += strings.Repeat(b.Empty, int(empty))
+	s += strings.Repeat(b.Filled, filledCount)
+	s += strings.Repeat(b.Empty, emptyCount)
 	s += b.EndDelimiter
 	return s
 }
@@ -202,15 +230,10 @@ func (b *Bar) bar() string {
 // Render write the progress bar to io.Writer
 func (b *Bar) Render(w io.Writer) int64 {
 	s := fmt.Sprintf("\x1bM\r %s", b.string())
-	//fmt.Print("\033[2K\033[0G")
-	fmt.Print("\x1B7") // save the cursor position
-	// fmt.Print("\x1B[2K")   // erase the entire line
-	fmt.Print("\x1B[0J") // erase from cursor to end of screen
-	// fmt.Print("\x1B[?47h") // save screen
-	// fmt.Print("\x1B[1J")   // erase from cursor to beginning of screen
+	fmt.Print("\x1B7")     // save the cursor position
+	fmt.Print("\x1B[0J")   // erase from cursor to end of screen
 	fmt.Print("\x1B[?47l") // restore screen
 	io.WriteString(w, s)
-	// fmt.Print("\x1B8") // restore the cursor position util new size is calculated
 	return int64(len(s))
 }
 

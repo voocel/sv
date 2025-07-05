@@ -15,7 +15,6 @@ type Config struct {
 	Debug         bool
 }
 
-// 默认配置
 var defaultConfig = &Config{
 	BaseURL:       "https://go.dev",
 	ReleaseURL:    "https://go.dev/doc/devel/release",

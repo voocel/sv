@@ -192,7 +192,6 @@ func (a *app) selectVersions(versions []string) (string, error) {
 		return "", ErrNoVersionsAvailable()
 	}
 
-	// 按版本排序
 	sort.Slice(versions, func(i, j int) bool {
 		return versionCompare(versions[i]) > versionCompare(versions[j])
 	})
@@ -208,7 +207,6 @@ func (a *app) selectVersions(versions []string) (string, error) {
 		return "", err
 	}
 
-	// 移除日期部分 (如果存在)
 	if i := strings.Index(target, "("); i != -1 {
 		target = strings.TrimSpace(target[:i])
 	}
