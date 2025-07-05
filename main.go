@@ -17,7 +17,7 @@ var (
 	SVDownload string
 )
 
-const Ver = "v1.1.9"
+const Ver = "v1.2.0"
 
 func main() {
 	SetLogLevel("debug")
