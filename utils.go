@@ -10,8 +10,50 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
+
+func normalizeVersionTag(tag string) string {
+	if strings.HasPrefix(tag, "v") {
+		return strings.Replace(tag, "v", "go", 1)
+	}
+	if !strings.HasPrefix(tag, "go") {
+		return "go" + tag
+	}
+	return tag
+}
+
+func generateFileName(tag string) string {
+	ext := ".tar.gz"
+	if runtime.GOOS == "windows" {
+		ext = ".zip"
+	}
+	return fmt.Sprintf("%s.%s-%s%s", tag, runtime.GOOS, runtime.GOARCH, ext)
+}
+
+func generateDownloadURL(tag string) string {
+	name := generateFileName(tag)
+	if strings.HasPrefix(tag, "v") {
+		name = strings.Replace(name, "v", "go", 1)
+	}
+	return fmt.Sprintf("/dl/%s", name)
+}
+
+func retryFunc(fn func() error, maxRetries int) error {
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		if err := fn(); err != nil {
+			lastErr = err
+			if i < maxRetries-1 {
+				Warnf("Attempt %d failed, retrying... %v", i+1, err)
+			}
+			continue
+		}
+		return nil
+	}
+	return lastErr
+}
 
 func Extract(dst, src string) error {
 	PrintCyan("extracting...")
@@ -268,6 +310,12 @@ func versionCompare(version string) string {
 	if strings.HasPrefix(version, "v") {
 		version = strings.TrimPrefix(version, "v")
 	}
+
+	// 如果版本字符串为空，返回空字符串
+	if version == "" {
+		return ""
+	}
+
 	const maxByte = 1<<8 - 1
 	vo := make([]byte, 0, len(version)+8)
 	j := -1
@@ -282,12 +330,13 @@ func versionCompare(version string) string {
 			vo = append(vo, 0x00)
 			j = len(vo) - 1
 		}
-		if vo[j] == 1 && vo[j+1] == '0' {
+		if j+1 < len(vo) && vo[j] == 1 && vo[j+1] == '0' {
 			vo[j+1] = b
 			continue
 		}
 		if vo[j]+1 > maxByte {
-			panic("invalid version")
+			// 不要panic，而是返回原始版本
+			return version
 		}
 		vo = append(vo, b)
 		vo[j]++

@@ -9,8 +9,6 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
-const releaseUrl = "https://go.dev/doc/devel/release"
-
 type Parser struct {
 	doc      *goquery.Document
 	releases map[string]string
@@ -18,7 +16,11 @@ type Parser struct {
 
 // NewParser return a new DOM tree parser
 func NewParser(reader io.Reader) *Parser {
-	doc, _ := goquery.NewDocumentFromReader(reader)
+	doc, err := goquery.NewDocumentFromReader(reader)
+	if err != nil {
+		Errorf("Failed to parse HTML document: %v", err)
+		return nil
+	}
 	return &Parser{
 		doc:      doc,
 		releases: make(map[string]string),
@@ -101,7 +103,11 @@ type DateParser struct {
 
 // NewDateParser return a new DOM tree parser
 func NewDateParser(reader io.Reader) *DateParser {
-	doc, _ := goquery.NewDocumentFromReader(reader)
+	doc, err := goquery.NewDocumentFromReader(reader)
+	if err != nil {
+		Errorf("Failed to parse release date document: %v", err)
+		return nil
+	}
 	return &DateParser{
 		doc:      doc,
 		releases: make(map[string]string),
@@ -109,13 +115,10 @@ func NewDateParser(reader io.Reader) *DateParser {
 }
 
 func (p *DateParser) findReleaseDate() map[string]string {
+	releaseRegex := regexp.MustCompile(`go[\s\S]*\)`)
 	p.doc.Find("article").Find("p:contains(released)").Each(func(i int, selection *goquery.Selection) {
-		reg, err := regexp.Compile(`go[\s\S]*\)`)
-		if err != nil {
-			panic(err)
-		}
-		result := reg.FindString(selection.Text())
-		if len(result) == 0 {
+		result := releaseRegex.FindString(selection.Text())
+		if result == "" {
 			return
 		}
 		tmp := strings.Split(result, " ")
@@ -126,8 +129,11 @@ func (p *DateParser) findReleaseDate() map[string]string {
 			version = strings.FieldsFunc(tmp[0], unicode.IsSpace)[0]
 			date = strings.TrimRight(tmp[1], ")")
 		}
-		p.releases[version] = date
+		if version != "" && date != "" {
+			p.releases[version] = date
+		}
 	})
+
 	p.doc.Find("article").Find("h2").Each(func(i int, selection *goquery.Selection) {
 		tmp := strings.Split(selection.Text(), " ")
 		if len(tmp) == 3 {

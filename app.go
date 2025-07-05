@@ -1,19 +1,13 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
-	"runtime"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/AlecAivazis/survey/v2"
 )
-
-// "https://go.dev/dl"
-const baseUrl = "https://studygolang.com"
 
 type app struct {
 	opts   *startOpts
@@ -32,121 +26,200 @@ func newApp(opts *startOpts) *app {
 	return &app{
 		opts: opts,
 		client: &http.Client{
-			Timeout: time.Second * 10,
+			Timeout: cfg.HTTPTimeout,
 		},
 	}
 }
 
-func (a *app) Start() (err error) {
-	p := &Package{}
+func (a *app) Start() error {
 	switch a.opts.cmd {
 	case "list":
-		return a.list()
+		return a.handleList()
 	case "use":
-		p.Tag = a.opts.target
-		p.Name = a.tagToName(p.Tag)
-		if err := p.useLocal(); err != nil {
-			var ok bool
-			err = survey.AskOne(&survey.Confirm{
-				Message: "Do you like to download and install from remote?",
-			}, &ok)
-			if ok {
-				p.URL = a.tagToURL(p.Tag)
-				return p.useRemote()
-			}
-		}
-		return
+		return a.handleUse()
 	case "install":
-		if a.opts.target == "" {
-			return errors.New("tag is empty")
-		}
-		p.Tag = a.opts.target
-		return p.install()
+		return a.handleInstall()
 	case "uninstall":
-		if a.opts.target == "" {
-			return errors.New("tag is empty")
-		}
-		p.Tag = a.opts.target
-		p.Name = a.tagToName(p.Tag)
-		return p.remove()
+		return a.handleUninstall()
 	case "upgrade":
-		u := NewUpgrade(a.opts.force)
-		return u.checkUpgrade()
+		return a.handleUpgrade()
+	default:
+		return ErrUnsupportedCommand()
 	}
-	return
 }
 
-func (a *app) list() error {
+func (a *app) handleList() error {
 	if a.opts.remote {
-		resp, err := a.client.Get(baseUrl + "/dl")
-		if err != nil {
-			return err
-		}
-		respDate, err := a.client.Get(releaseUrl)
-		if err != nil {
-			return err
-		}
-		parser := NewParser(resp.Body)
-		dateParser := NewDateParser(respDate.Body)
-
-		releases := dateParser.findReleaseDate()
-		parser.setReleases(releases)
-
-		archive := parser.AllVersions()
-		versions := make([]string, 0)
-		for name := range archive {
-			release := releases[name]
-			versions = append(versions, fmt.Sprintf("%v (%v)", name, release))
-		}
-
-		target, err := a.selectVersions(versions)
-		if err != nil {
-			return err
-		}
-		targetPkg := a.getPackage(target, archive)
-		if targetPkg == nil {
-			return fmt.Errorf("not fount package on this version: %s", target)
-		}
-
-		return targetPkg.use()
-	} else {
-		pkg := &Package{}
-		versions, err := pkg.getLocalVersion()
-		if err != nil {
-			return err
-		}
-		target, err := a.selectVersions(versions)
-		if err != nil {
-			return err
-		}
-		pkg.Tag = target
-		return pkg.useLocal()
+		return a.listRemote()
 	}
+	return a.listLocal()
 }
 
-func (a *app) selectVersions(versions []string) (target string, err error) {
+func (a *app) handleUse() error {
+	if a.opts.target == "" {
+		return ErrTagEmpty()
+	}
+
+	p := &Package{
+		Tag:  a.opts.target,
+		Name: a.tagToName(a.opts.target),
+	}
+
+	if err := p.useLocal(); err != nil {
+		return a.promptRemoteInstall(p)
+	}
+	return nil
+}
+
+func (a *app) handleInstall() error {
+	if a.opts.target == "" {
+		return ErrTagEmpty()
+	}
+
+	p := &Package{
+		Tag:  a.opts.target,
+		Name: a.tagToName(a.opts.target),
+		URL:  a.tagToURL(a.opts.target),
+	}
+	return p.install()
+}
+
+func (a *app) handleUninstall() error {
+	if a.opts.target == "" {
+		return ErrTagEmpty()
+	}
+
+	p := &Package{
+		Tag:  a.opts.target,
+		Name: a.tagToName(a.opts.target),
+	}
+	return p.remove()
+}
+
+func (a *app) handleUpgrade() error {
+	u := NewUpgrade(a.opts.force)
+	return u.checkUpgrade()
+}
+
+func (a *app) promptRemoteInstall(p *Package) error {
+	var ok bool
+	err := survey.AskOne(&survey.Confirm{
+		Message: "Do you like to download and install from remote?",
+	}, &ok)
+	if err != nil {
+		return err
+	}
+
+	if ok {
+		p.URL = a.tagToURL(p.Tag)
+		return p.useRemote()
+	}
+	return nil
+}
+
+func (a *app) listRemote() error {
+	resp, err := a.client.Get(cfg.BaseURL + "/dl")
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	respDate, err := a.client.Get(cfg.ReleaseURL)
+	if err != nil {
+		return err
+	}
+	defer respDate.Body.Close()
+
+	parser := NewParser(resp.Body)
+	if parser == nil {
+		return NewError("failed to parse version information")
+	}
+
+	dateParser := NewDateParser(respDate.Body)
+	if dateParser == nil {
+		return NewError("failed to parse release date information")
+	}
+
+	releases := dateParser.findReleaseDate()
+	parser.setReleases(releases)
+	archive := parser.AllVersions()
+
+	versions := a.formatVersions(archive, releases)
+	target, err := a.selectVersions(versions)
+	if err != nil {
+		return err
+	}
+
+	targetPkg := a.getPackage(target, archive)
+	if targetPkg == nil {
+		return NewError("package not found for version: " + target)
+	}
+
+	return targetPkg.use()
+}
+
+func (a *app) listLocal() error {
+	pkg := &Package{}
+	versions, err := pkg.getLocalVersion()
+	if err != nil {
+		return err
+	}
+
+	target, err := a.selectVersions(versions)
+	if err != nil {
+		return err
+	}
+
+	pkg.Tag = target
+	pkg.Name = a.tagToName(target)
+	return pkg.useLocal()
+}
+
+func (a *app) formatVersions(archive map[string]*Version, releases map[string]string) []string {
+	versions := make([]string, 0, len(archive))
+	for name := range archive {
+		if release := releases[name]; release != "" {
+			versions = append(versions, fmt.Sprintf("%v (%v)", name, release))
+		} else {
+			versions = append(versions, name)
+		}
+	}
+	return versions
+}
+
+func (a *app) selectVersions(versions []string) (string, error) {
 	if len(versions) == 0 {
-		return "", errors.New(Red("No available versions locally to select, you can use -r for get remote versions"))
+		return "", ErrNoVersionsAvailable()
 	}
 
-	surveyIcon := func() survey.AskOpt {
-		return survey.WithIcons(func(icons *survey.IconSet) {
-			icons.SelectFocus.Text = "→"
-		})
-	}
-
+	// 按版本排序
 	sort.Slice(versions, func(i, j int) bool {
 		return versionCompare(versions[i]) > versionCompare(versions[j])
 	})
-	err = survey.AskOne(&survey.Select{
+
+	var target string
+	err := survey.AskOne(&survey.Select{
 		Message: "Choose a version:",
 		Help:    "Enter to install the selected version",
 		Options: versions,
-	}, &target, survey.WithValidator(survey.Required), surveyIcon())
+	}, &target, survey.WithValidator(survey.Required), a.surveyIcon())
+
+	if err != nil {
+		return "", err
+	}
+
+	// 移除日期部分 (如果存在)
 	if i := strings.Index(target, "("); i != -1 {
 		target = strings.TrimSpace(target[:i])
 	}
-	return
+
+	return target, nil
+}
+
+func (a *app) surveyIcon() survey.AskOpt {
+	return survey.WithIcons(func(icons *survey.IconSet) {
+		icons.SelectFocus.Text = "→"
+	})
 }
 
 func (a *app) getPackage(target string, m map[string]*Version) *Package {
@@ -154,8 +227,9 @@ func (a *app) getPackage(target string, m map[string]*Version) *Package {
 	if !ok {
 		return nil
 	}
+
+	filename := a.tagToName(target)
 	for _, v := range archive.Packages {
-		filename := a.tagToName(target)
 		if strings.HasPrefix(v.Name, filename) {
 			return v
 		}
@@ -164,17 +238,9 @@ func (a *app) getPackage(target string, m map[string]*Version) *Package {
 }
 
 func (a *app) tagToName(tag string) string {
-	ext := ".tar.gz"
-	if runtime.GOOS == "windows" {
-		ext = ".zip"
-	}
-	return fmt.Sprintf("%s.%s-%s%s", tag, runtime.GOOS, runtime.GOARCH, ext)
+	return generateFileName(tag)
 }
 
 func (a *app) tagToURL(tag string) string {
-	name := a.tagToName(tag)
-	if strings.HasPrefix(tag, "v") {
-		name = strings.Replace(name, "v", "go", 1)
-	}
-	return fmt.Sprintf("/dl/golang/%s", name)
+	return generateDownloadURL(tag)
 }

@@ -20,7 +20,7 @@ var (
 const Ver = "v1.1.9"
 
 func main() {
-	l.SetLevel("debug")
+	SetLogLevel("debug")
 	app := cli.NewApp()
 	app.Usage = "switch version"
 	app.Version = Ver

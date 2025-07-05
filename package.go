@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"crypto/sha256"
-	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -34,17 +33,23 @@ type Package struct {
 }
 
 func (p *Package) download() error {
-	d := NewDownloader(runtime.NumCPU(), p.Tag)
 	if p.URL == "" || p.Name == "" {
-		return errors.New(Red("Download URL is empty"))
+		return ErrURLEmpty()
 	}
-	return d.Download(baseUrl+p.URL, p.Name)
+
+	d := NewDownloader(runtime.NumCPU(), p.Tag)
+	downloadURL := cfg.BaseURL + p.URL
+
+	return retryFunc(func() error {
+		return d.Download(downloadURL, p.Name)
+	}, cfg.DownloadRetry)
 }
 
-func (p *Package) checkSum() (err error) {
-	f, err := os.Open(SVDownload + "/" + p.Name)
+func (p *Package) checkSum() error {
+	filePath := filepath.Join(SVDownload, p.Name)
+	f, err := os.Open(filePath)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open file for checksum: %w", err)
 	}
 	defer f.Close()
 
@@ -55,21 +60,23 @@ func (p *Package) checkSum() (err error) {
 	case "SHA1":
 		h = sha1.New()
 	default:
-		return errors.New("unsupported checksum algorithm")
+		return ErrUnsupportedAlgorithm()
 	}
 
 	if _, err := io.Copy(h, f); err != nil {
-		return err
+		return fmt.Errorf("failed to read file for checksum: %w", err)
 	}
 
-	if p.Checksum != fmt.Sprintf("%x", h.Sum(nil)) {
-		return errors.New("file checksum does not match the computed checksum")
+	computed := fmt.Sprintf("%x", h.Sum(nil))
+	if p.Checksum != computed {
+		return ErrChecksumMismatch()
 	}
 	return nil
 }
 
 func (p *Package) useCached() error {
-	return execute(p.Tag)
+	tag := normalizeVersionTag(p.Tag)
+	return execute(tag)
 }
 
 func (p *Package) useDownloaded() error {
@@ -84,7 +91,8 @@ func (p *Package) useDownloaded() error {
 	}
 	PrintGreen("extract success")
 
-	if err := os.Rename(filepath.Join(SVCache, "go"), filepath.Join(SVCache, p.Tag)); err != nil {
+	normalizedTag := normalizeVersionTag(p.Tag)
+	if err := os.Rename(filepath.Join(SVCache, "go"), filepath.Join(SVCache, normalizedTag)); err != nil {
 		return err
 	}
 
@@ -100,13 +108,14 @@ func (p *Package) useRemote() error {
 
 // useLocal contain cached and downloaded
 func (p *Package) useLocal() error {
-	if inCache(p.Tag) {
+	normalizedTag := normalizeVersionTag(p.Tag)
+	if inCache(normalizedTag) {
 		return p.useCached()
 	}
 	if inDownload(p.Name) {
 		return p.useDownloaded()
 	}
-	return errors.New(Blue("local does not exist"))
+	return ErrLocalNotExist()
 }
 
 func (p *Package) use() (err error) {
@@ -127,25 +136,23 @@ func (p *Package) remove() error {
 	return p.removeLocal()
 }
 
-func (p *Package) removeLocal() (err error) {
-	tag := p.Tag
-	if strings.HasPrefix(tag, "v") {
-		tag = strings.Replace(tag, "v", "go", 1)
-	}
-	if !strings.HasPrefix(tag, "go") {
-		tag = "go" + tag
-	}
+func (p *Package) removeLocal() error {
+	tag := normalizeVersionTag(p.Tag)
 
 	path, err := os.Readlink(SVRoot)
 	if err == nil && filepath.Base(path) == tag {
-		return errors.New(Red("[WARN]This version is in use, please use another version before uninstalling"))
+		return ErrVersionInUse(tag)
 	}
 
-	err = os.RemoveAll(filepath.Join(SVCache, tag))
-	if err != nil {
-		return
+	if err := os.RemoveAll(filepath.Join(SVCache, tag)); err != nil {
+		return fmt.Errorf("failed to remove cached version: %w", err)
 	}
-	return os.RemoveAll(filepath.Join(SVDownload, p.Name))
+
+	if err := os.RemoveAll(filepath.Join(SVDownload, p.Name)); err != nil {
+		return fmt.Errorf("failed to remove downloaded file: %w", err)
+	}
+
+	return nil
 }
 
 func (p *Package) getLocalVersion() (versions []string, err error) {
@@ -162,10 +169,10 @@ func (p *Package) getLocalVersion() (versions []string, err error) {
 
 func execute(tag string) (err error) {
 	if err = os.RemoveAll(SVRoot); err != nil {
-		return err
+		return fmt.Errorf("failed to remove existing Go installation: %w", err)
 	}
 	if err = os.Symlink(filepath.Join(SVCache, tag), SVRoot); err != nil {
-		return err
+		return fmt.Errorf("failed to create symlink: %w", err)
 	}
 
 	goBin := filepath.Join(SVRoot, "bin", "go")
@@ -179,9 +186,9 @@ func execute(tag string) (err error) {
 	}
 	cmd.Env = setEnv(append(os.Environ(), "GOROOT="+SVRoot, "PATH="+newPath))
 	if err := cmd.Run(); err != nil {
-		os.Exit(1)
+		return fmt.Errorf("failed to execute go version: %w", err)
 	}
-	return
+	return nil
 }
 
 // ExecCommand use shell /bin/bash -c to execute command

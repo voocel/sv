@@ -88,43 +88,43 @@ func White(s string) string {
 }
 
 func PrintBold(s string) {
-	println(Bold(s))
+	fmt.Println(Bold(s))
 }
 
 func PrintBlack(s string) {
-	println(Black(s))
+	fmt.Println(Black(s))
 }
 
 func PrintRed(s string) {
-	println(Red(s))
+	fmt.Println(Red(s))
 }
 
 func PrintGreen(s string) {
-	println(Green(s))
+	fmt.Println(Green(s))
 }
 
 func PrintYellow(s string) {
-	println(Yellow(s))
+	fmt.Println(Yellow(s))
 }
 
 func PrintBlue(s string) {
-	println(Blue(s))
+	fmt.Println(Blue(s))
 }
 
 func PrintPink(s string) {
-	println(Pink(s))
+	fmt.Println(Pink(s))
 }
 
 func PrintCyan(s string) {
-	println(Cyan(s))
+	fmt.Println(Cyan(s))
 }
 
 func PrintGray(s string) {
-	println(Gray(s))
+	fmt.Println(Gray(s))
 }
 
 func PrintWhite(s string) {
-	println(White(s))
+	fmt.Println(White(s))
 }
 
 func codeReason(code int) string {

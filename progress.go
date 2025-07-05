@@ -10,7 +10,12 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	//github.com/fatih/color
+)
+
+const (
+	defaultBarWidth = 50
+	updateInterval  = time.Second / 10
+	bytesPerKB      = 1024
 )
 
 // Bar is a progress bar
@@ -39,7 +44,7 @@ func NewBar(total int64) *Bar {
 		EndDelimiter:   "|",
 		Filled:         "█",
 		Empty:          "░",
-		Width:          50,
+		Width:          defaultBarWidth,
 		Status:         "Downloading",
 		total:          total,
 		done:           make(chan struct{}),
@@ -53,7 +58,7 @@ func NewBar(total int64) *Bar {
 
 // listenRate start listen the speed
 func (b *Bar) listenRate() {
-	tick := time.NewTicker(time.Second / 10)
+	tick := time.NewTicker(updateInterval)
 	defer tick.Stop()
 	for {
 		select {
@@ -69,11 +74,12 @@ func (b *Bar) listenRate() {
 	}
 }
 
-// template for rendering. This method will panic if the template fails to parse
+// template for rendering
 func (b *Bar) template(s string) {
 	t, err := template.New("").Parse(s)
 	if err != nil {
-		panic(err)
+		Errorf("Failed to parse progress bar template: %v", err)
+		t, _ = template.New("").Parse("{{.Status}} {{.Percent | printf \"%.0f\"}}%")
 	}
 	b.tmpl = t
 }
@@ -122,7 +128,8 @@ func (b *Bar) SetEmpty(s string, color ...string) {
 func (b *Bar) Add(n int64) {
 	b.current += n
 	if b.current > b.total {
-		panic("cannot be greater than the total")
+		Warnf("Progress current (%d) exceeds total (%d), capping to total", b.current, b.total)
+		b.current = b.total
 	}
 	if b.current == b.total {
 		b.Status = "Success"
@@ -132,6 +139,10 @@ func (b *Bar) Add(n int64) {
 
 // string return the progress bar
 func (b *Bar) string() string {
+	if b.tmpl == nil {
+		return fmt.Sprintf("%s %.0f%%", b.Status, b.percent())
+	}
+
 	var buf bytes.Buffer
 	if b.rate == "" {
 		b.rate = "[" + b.bytesToSize(0) + "/s]"
@@ -156,7 +167,8 @@ func (b *Bar) string() string {
 
 	data.Total = SetColor(b.formatTotal(), 0, 0, green)
 	if err := b.tmpl.Execute(&buf, data); err != nil {
-		panic(err)
+		Errorf("Failed to execute progress bar template: %v", err)
+		return fmt.Sprintf("%s %.0f%%", b.Status, b.percent())
 	}
 
 	return buf.String()
@@ -164,6 +176,9 @@ func (b *Bar) string() string {
 
 // percent return the percentage
 func (b *Bar) percent() float64 {
+	if b.total == 0 {
+		return 0
+	}
 	return (float64(b.current) / float64(b.total)) * 100
 }
 
@@ -209,21 +224,24 @@ func (b *Bar) Write(bytes []byte) (n int, err error) {
 
 // bytesToSize format bytes to string
 func (b *Bar) bytesToSize(bytes int64) string {
-	var k = 1024
-	var sizes = []string{"Bytes", "KB", "MB", "GB", "TB"}
+	sizes := []string{"Bytes", "KB", "MB", "GB", "TB"}
 	if bytes == 0 {
 		return "0 Bytes"
 	}
-	i := math.Floor(math.Log(float64(bytes)) / math.Log(float64(k)))
-	r := float64(bytes) / math.Pow(float64(k), i)
-	return strconv.FormatFloat(r, 'f', 2, 64) + sizes[int(i)]
+	if bytes < 0 {
+		return "0 Bytes"
+	}
+
+	i := math.Floor(math.Log(float64(bytes)) / math.Log(float64(bytesPerKB)))
+	if int(i) >= len(sizes) {
+		i = float64(len(sizes) - 1)
+	}
+
+	r := float64(bytes) / math.Pow(float64(bytesPerKB), i)
+	return strconv.FormatFloat(r, 'f', 2, 64) + " " + sizes[int(i)]
 }
 
 // Close the rate listen
 func (b *Bar) Close() {
 	close(b.done)
-
-	// close(b.done)
-	// fmt.Print("\r\033[K") // 清除当前行
-	// fmt.Println() // 移动到下一行
 }

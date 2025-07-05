@@ -2,16 +2,10 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
-	"time"
-)
-
-const (
-	upgradeApi = "https://api.github.com/repos/voocel/sv/releases/latest"
 )
 
 type Upgrade struct {
@@ -36,14 +30,14 @@ func NewUpgrade(force bool) *Upgrade {
 	return &Upgrade{
 		force: force,
 		client: &http.Client{
-			Timeout: time.Second * 5,
+			Timeout: cfg.HTTPTimeout,
 		},
 	}
 }
 
 func (u *Upgrade) checkUpgrade() error {
 	PrintCyan("Checking version...")
-	resp, err := u.client.Get(upgradeApi)
+	resp, err := u.client.Get(cfg.UpgradeAPIURL)
 	if err != nil {
 		return err
 	}
@@ -52,11 +46,11 @@ func (u *Upgrade) checkUpgrade() error {
 	latest := &Release{}
 	err = json.NewDecoder(resp.Body).Decode(latest)
 	if err != nil {
-		return errors.New(Red("Get latest version information fail, please try again!"))
+		return ErrLatestVersionFailed()
 	}
 
 	if !u.force && versionCompare(Ver) >= versionCompare(latest.TagName) {
-		return errors.New(Blue("You already have the latest version of SV" + "(" + latest.TagName + ")"))
+		return ErrAlreadyLatest(latest.TagName)
 	}
 	u.downloadURL = latest.Assets[0].BrowserDownloadURL
 
