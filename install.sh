@@ -123,10 +123,12 @@ check_dependencies() {
 # Get latest version from GitHub API
 get_latest_version() {
     local version
+    local api_url="https://api.github.com/repos/voocel/sv/releases/latest"
+    
     if command -v curl >/dev/null 2>&1; then
-        version=$(curl -s "$REPO_URL/releases/latest" | grep '"tag_name":' | cut -d'"' -f4)
+        version=$(curl -s "$api_url" | grep '"tag_name":' | cut -d'"' -f4)
     else
-        version=$(wget -qO- "$REPO_URL/releases/latest" | grep '"tag_name":' | cut -d'"' -f4)
+        version=$(wget -qO- "$api_url" | grep '"tag_name":' | cut -d'"' -f4)
     fi
     
     if [ -z "$version" ]; then
