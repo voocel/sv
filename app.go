@@ -202,11 +202,9 @@ func (a *app) selectVersions(versions []string) (string, error) {
 		Help:    "Enter to install the selected version",
 		Options: versions,
 	}, &target, survey.WithValidator(survey.Required), a.surveyIcon())
-
 	if err != nil {
 		return "", err
 	}
-
 	if i := strings.Index(target, "("); i != -1 {
 		target = strings.TrimSpace(target[:i])
 	}

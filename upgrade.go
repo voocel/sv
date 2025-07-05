@@ -2,10 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 )
 
 type Upgrade struct {
@@ -52,7 +55,24 @@ func (u *Upgrade) checkUpgrade() error {
 	if !u.force && versionCompare(Ver) >= versionCompare(latest.TagName) {
 		return ErrAlreadyLatest(latest.TagName)
 	}
-	u.downloadURL = latest.Assets[0].BrowserDownloadURL
+
+	// 检测当前系统架构并找到匹配的二进制文件
+	currentArch := fmt.Sprintf("%s-%s", runtime.GOOS, runtime.GOARCH)
+	var matchedAsset *Asset
+	
+	for _, asset := range latest.Assets {
+		if strings.Contains(asset.Name, currentArch) {
+			matchedAsset = &asset
+			break
+		}
+	}
+	
+	if matchedAsset == nil {
+		return fmt.Errorf("未找到适合当前架构 (%s) 的二进制文件", currentArch)
+	}
+	
+	u.downloadURL = matchedAsset.BrowserDownloadURL
+	PrintBlue(fmt.Sprintf("找到匹配的版本: %s", matchedAsset.Name))
 
 	return u.upgrade()
 }
@@ -66,8 +86,9 @@ func (u *Upgrade) upgrade() error {
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0666)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
@@ -78,7 +99,7 @@ func (u *Upgrade) upgrade() error {
 		return err
 	}
 
-	PrintGreen("upgrade success!")
+	PrintGreen("升级成功!")
 	if err = os.Rename(filepath.Join(SVBin, filename), filepath.Join(SVBin, "sv")); err != nil {
 		return err
 	}
