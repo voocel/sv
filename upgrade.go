@@ -56,52 +56,74 @@ func (u *Upgrade) checkUpgrade() error {
 		return ErrAlreadyLatest(latest.TagName)
 	}
 
-	// 检测当前系统架构并找到匹配的二进制文件
-	currentArch := fmt.Sprintf("%s-%s", runtime.GOOS, runtime.GOARCH)
+	// Detect current system architecture and find matching binary
+	// Binary naming convention: sv-{os}-{arch} where arch uses hyphen (e.g., arm-64, amd-64)
+	osName := runtime.GOOS
+	archName := runtime.GOARCH
+	// Convert GOARCH format to release asset format
+	switch archName {
+	case "amd64":
+		archName = "amd-64"
+	case "arm64":
+		archName = "arm-64"
+	}
+	currentArch := fmt.Sprintf("%s-%s", osName, archName)
 	var matchedAsset *Asset
-	
+
 	for _, asset := range latest.Assets {
 		if strings.Contains(asset.Name, currentArch) {
 			matchedAsset = &asset
 			break
 		}
 	}
-	
+
 	if matchedAsset == nil {
-		return fmt.Errorf("未找到适合当前架构 (%s) 的二进制文件", currentArch)
+		return fmt.Errorf("no binary found for current architecture (%s)", currentArch)
 	}
-	
+
 	u.downloadURL = matchedAsset.BrowserDownloadURL
-	PrintBlue(fmt.Sprintf("找到匹配的版本: %s", matchedAsset.Name))
+	PrintBlue(fmt.Sprintf("Found matching version: %s", matchedAsset.Name))
 
 	return u.upgrade()
 }
 
 func (u *Upgrade) upgrade() error {
 	filename := filepath.Base(u.downloadURL)
-	path := filepath.Join(SVBin, filename)
+	downloadPath := filepath.Join(paths.Bin, filename)
 
 	PrintBlue("Downloading the newest version...")
 	resp, err := u.client.Get(u.downloadURL)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to download upgrade: %w", err)
 	}
 	defer resp.Body.Close()
 
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0644)
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download failed with status %d", resp.StatusCode)
+	}
+
+	f, err := os.OpenFile(downloadPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create file: %w", err)
 	}
 	defer f.Close()
 
-	_, err = io.Copy(f, resp.Body)
-	if err != nil {
-		return err
+	if _, err = io.Copy(f, resp.Body); err != nil {
+		return fmt.Errorf("failed to write file: %w", err)
 	}
 
-	PrintGreen("升级成功!")
-	if err = os.Rename(filepath.Join(SVBin, filename), filepath.Join(SVBin, "sv")); err != nil {
-		return err
+	// Ensure file is closed before rename
+	f.Close()
+
+	targetPath := filepath.Join(paths.Bin, "sv")
+	if err = os.Rename(downloadPath, targetPath); err != nil {
+		return fmt.Errorf("failed to rename binary: %w", err)
 	}
-	return os.Chmod(filepath.Join(SVBin, "sv"), 0755)
+
+	if err = os.Chmod(targetPath, 0755); err != nil {
+		return fmt.Errorf("failed to set permissions: %w", err)
+	}
+
+	PrintGreen("Upgrade successful!")
+	return nil
 }

@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 func normalizeVersionTag(tag string) string {
@@ -40,19 +42,68 @@ func generateDownloadURL(tag string) string {
 	return fmt.Sprintf("/dl/%s", name)
 }
 
+// RetryConfig holds configuration for retry behavior
+type RetryConfig struct {
+	MaxRetries int
+	BaseDelay  time.Duration
+	MaxDelay   time.Duration
+	Multiplier float64
+	Jitter     bool
+}
+
+// DefaultRetryConfig returns sensible defaults for retry behavior
+func DefaultRetryConfig() RetryConfig {
+	return RetryConfig{
+		MaxRetries: cfg.DownloadRetry,
+		BaseDelay:  500 * time.Millisecond,
+		MaxDelay:   30 * time.Second,
+		Multiplier: 2.0,
+		Jitter:     true,
+	}
+}
+
+// retryFunc executes fn with exponential backoff retry
 func retryFunc(fn func() error, maxRetries int) error {
+	return retryWithConfig(fn, RetryConfig{
+		MaxRetries: maxRetries,
+		BaseDelay:  500 * time.Millisecond,
+		MaxDelay:   30 * time.Second,
+		Multiplier: 2.0,
+		Jitter:     true,
+	})
+}
+
+// retryWithConfig executes fn with configurable exponential backoff
+func retryWithConfig(fn func() error, config RetryConfig) error {
 	var lastErr error
-	for i := 0; i < maxRetries; i++ {
+	delay := config.BaseDelay
+
+	for attempt := 0; attempt < config.MaxRetries; attempt++ {
 		if err := fn(); err != nil {
 			lastErr = err
-			if i < maxRetries-1 {
-				Warnf("Attempt %d failed, retrying... %v", i+1, err)
+
+			if attempt < config.MaxRetries-1 {
+				waitTime := delay
+				if config.Jitter {
+					jitter := time.Duration(rand.Int63n(int64(delay)))
+					waitTime = delay + jitter/2
+				}
+
+				Warnf("Attempt %d/%d failed: %v, retrying in %v...",
+					attempt+1, config.MaxRetries, err, waitTime)
+				time.Sleep(waitTime)
+
+				delay = time.Duration(float64(delay) * config.Multiplier)
+				if delay > config.MaxDelay {
+					delay = config.MaxDelay
+				}
 			}
 			continue
 		}
 		return nil
 	}
-	return lastErr
+
+	return fmt.Errorf("all %d attempts failed, last error: %w", config.MaxRetries, lastErr)
 }
 
 func Extract(dst, src string) error {

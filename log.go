@@ -79,7 +79,7 @@ func Infof(format string, v ...interface{})  { logf(INFO, format, v...) }
 func Warnf(format string, v ...interface{})  { logf(WARN, format, v...) }
 func Errorf(format string, v ...interface{}) { logf(ERROR, format, v...) }
 
-func Debug(v ...interface{}) { logf(DEBUG, fmt.Sprint(v...)) }
-func Info(v ...interface{})  { logf(INFO, fmt.Sprint(v...)) }
-func Warn(v ...interface{})  { logf(WARN, fmt.Sprint(v...)) }
-func Error(v ...interface{}) { logf(ERROR, fmt.Sprint(v...)) }
+func Debug(v ...interface{}) { logf(DEBUG, "%s", fmt.Sprint(v...)) }
+func Info(v ...interface{})  { logf(INFO, "%s", fmt.Sprint(v...)) }
+func Warn(v ...interface{})  { logf(WARN, "%s", fmt.Sprint(v...)) }
+func Error(v ...interface{}) { logf(ERROR, "%s", fmt.Sprint(v...)) }

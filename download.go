@@ -122,7 +122,7 @@ func (d *Downloader) singleDownload(strURL, filename string) error {
 
 	d.bar = NewBar(resp.ContentLength)
 
-	f, err := os.OpenFile(SVDownload+"/"+filename, os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(filepath.Join(paths.Download, filename), os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
@@ -179,7 +179,7 @@ func (d *Downloader) downloadPartial(strURL, filename string, rangeStart, rangeE
 }
 
 func (d *Downloader) merge(filename string) error {
-	dstFile, err := os.OpenFile(SVDownload+"/"+filename, os.O_CREATE|os.O_WRONLY, 0644)
+	dstFile, err := os.OpenFile(filepath.Join(paths.Download, filename), os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
@@ -205,10 +205,9 @@ func (d *Downloader) merge(filename string) error {
 }
 
 func (d *Downloader) getPartDir(filename string) string {
-	return SVDownload + "/" + strings.SplitN(filepath.Base(filename), ".", 2)[0]
+	return filepath.Join(paths.Download, strings.SplitN(filepath.Base(filename), ".", 2)[0])
 }
 
 func (d *Downloader) getPartFilename(filename string, partNum int) string {
-	partDir := d.getPartDir(filename)
-	return fmt.Sprintf("%s/%s-%d", partDir, filename, partNum)
+	return filepath.Join(d.getPartDir(filename), fmt.Sprintf("%s-%d", filename, partNum))
 }

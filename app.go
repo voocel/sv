@@ -20,6 +20,10 @@ type startOpts struct {
 	latest string
 	remote bool
 	force  bool
+	// prune options
+	keep   int
+	all    bool
+	dryRun bool
 }
 
 func newApp(opts *startOpts) *app {
@@ -41,6 +45,8 @@ func (a *app) Start() error {
 		return a.handleInstall()
 	case "uninstall":
 		return a.handleUninstall()
+	case "prune":
+		return a.handlePrune()
 	case "upgrade":
 		return a.handleUpgrade()
 	default:
@@ -120,29 +126,41 @@ func (a *app) promptRemoteInstall(p *Package) error {
 func (a *app) listRemote() error {
 	resp, err := a.client.Get(cfg.BaseURL + "/dl")
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to fetch version list: %w", err)
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("failed to fetch version list: status %d", resp.StatusCode)
+	}
+
 	respDate, err := a.client.Get(cfg.ReleaseURL)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to fetch release dates: %w", err)
 	}
 	defer respDate.Body.Close()
 
-	parser := NewParser(resp.Body)
-	if parser == nil {
-		return NewError("failed to parse version information")
+	parser, err := NewParser(resp.Body)
+	if err != nil {
+		return err
 	}
 
-	dateParser := NewDateParser(respDate.Body)
-	if dateParser == nil {
-		return NewError("failed to parse release date information")
+	dateParser, err := NewDateParser(respDate.Body)
+	if err != nil {
+		// Non-fatal: continue without release dates
+		Warnf("Could not parse release dates: %v", err)
 	}
 
-	releases := dateParser.findReleaseDate()
-	parser.setReleases(releases)
+	var releases map[string]string
+	if dateParser != nil {
+		releases = dateParser.findReleaseDate()
+		parser.setReleases(releases)
+	}
+
 	archive := parser.AllVersions()
+	if len(archive) == 0 {
+		return NewError("no versions found, the page structure may have changed")
+	}
 
 	versions := a.formatVersions(archive, releases)
 	target, err := a.selectVersions(versions)
@@ -239,4 +257,101 @@ func (a *app) tagToName(tag string) string {
 
 func (a *app) tagToURL(tag string) string {
 	return generateDownloadURL(tag)
+}
+
+func (a *app) handlePrune() error {
+	pkg := &Package{}
+	versions, err := pkg.getLocalVersion()
+	if err != nil {
+		return err
+	}
+
+	if len(versions) == 0 {
+		return NewInfo("no installed versions to prune")
+	}
+
+	// Sort versions (newest first)
+	sort.Slice(versions, func(i, j int) bool {
+		return versionCompare(versions[i]) > versionCompare(versions[j])
+	})
+
+	currentVersion := getCurrentVersion()
+
+	var toRemove []string
+	var toKeep []string
+
+	if a.opts.all {
+		// Remove all except current
+		for _, v := range versions {
+			if v == currentVersion {
+				toKeep = append(toKeep, v)
+			} else {
+				toRemove = append(toRemove, v)
+			}
+		}
+	} else {
+		// Keep the N most recent versions
+		keep := a.opts.keep
+		if keep < 1 {
+			keep = 2
+		}
+
+		for i, v := range versions {
+			if v == currentVersion {
+				toKeep = append(toKeep, v)
+			} else if i < keep || (currentVersion != "" && i < keep+1) {
+				toKeep = append(toKeep, v)
+			} else {
+				toRemove = append(toRemove, v)
+			}
+		}
+	}
+
+	if len(toRemove) == 0 {
+		PrintGreen("Nothing to prune. All versions are within the keep limit.")
+		return nil
+	}
+
+	PrintCyan(fmt.Sprintf("Installed versions: %d", len(versions)))
+	if currentVersion != "" {
+		PrintCyan(fmt.Sprintf("Current version: %s", currentVersion))
+	}
+	PrintCyan(fmt.Sprintf("Versions to keep: %v", toKeep))
+	PrintYellow(fmt.Sprintf("Versions to remove: %v", toRemove))
+
+	if a.opts.dryRun {
+		PrintBlue("Dry run mode - no changes made")
+		return nil
+	}
+
+	var confirm bool
+	err = survey.AskOne(&survey.Confirm{
+		Message: fmt.Sprintf("Remove %d version(s)?", len(toRemove)),
+		Default: false,
+	}, &confirm)
+	if err != nil {
+		return err
+	}
+
+	if !confirm {
+		PrintBlue("Prune cancelled")
+		return nil
+	}
+
+	removed := 0
+	for _, v := range toRemove {
+		p := &Package{
+			Tag:  v,
+			Name: a.tagToName(v),
+		}
+		if err := p.removeLocal(); err != nil {
+			Warnf("Failed to remove %s: %v", v, err)
+			continue
+		}
+		PrintGreen(fmt.Sprintf("Removed: %s", v))
+		removed++
+	}
+
+	PrintGreen(fmt.Sprintf("Pruned %d version(s), kept %d version(s)", removed, len(toKeep)))
+	return nil
 }

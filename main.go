@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -9,15 +10,44 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-var (
-	SVHome     string
-	SVRoot     string
-	SVBin      string
-	SVCache    string
-	SVDownload string
-)
-
 const Ver = "v1.2.1"
+
+// Paths holds all application directory paths
+type Paths struct {
+	Home     string // ~/.sv
+	Root     string // ~/.sv/go (symlink to current version)
+	Bin      string // ~/.sv/bin
+	Cache    string // ~/.sv/cache (installed versions)
+	Download string // ~/.sv/downloads
+}
+
+var paths *Paths
+
+// initPaths initializes and validates all required directories
+func initPaths() error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get user home directory: %w", err)
+	}
+
+	paths = &Paths{
+		Home:     filepath.Join(homeDir, ".sv"),
+		Root:     filepath.Join(homeDir, ".sv", "go"),
+		Bin:      filepath.Join(homeDir, ".sv", "bin"),
+		Cache:    filepath.Join(homeDir, ".sv", "cache"),
+		Download: filepath.Join(homeDir, ".sv", "downloads"),
+	}
+
+	// Create required directories
+	dirs := []string{paths.Download, paths.Cache, paths.Bin}
+	for _, dir := range dirs {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("failed to create directory %s: %w", dir, err)
+		}
+	}
+
+	return nil
+}
 
 func main() {
 	SetLogLevel("debug")
@@ -76,6 +106,28 @@ func main() {
 			Action:    baseCmd,
 			Aliases:   []string{"ui"},
 		}, {
+			Name:      "prune",
+			Usage:     "remove old Go versions, keeping the most recent ones",
+			UsageText: "sv prune [--keep N] [--all] [--dry-run]",
+			Action:    baseCmd,
+			Flags: []cli.Flag{
+				&cli.IntFlag{
+					Name:    "keep",
+					Aliases: []string{"k"},
+					Usage:   "number of versions to keep (default: 2)",
+					Value:   2,
+				},
+				&cli.BoolFlag{
+					Name:    "all",
+					Aliases: []string{"a"},
+					Usage:   "remove all versions except current",
+				},
+				&cli.BoolFlag{
+					Name:  "dry-run",
+					Usage: "show what would be deleted without actually deleting",
+				},
+			},
+		}, {
 			Name:      "upgrade",
 			Usage:     "upgrade sv",
 			UsageText: "sv upgrade",
@@ -90,26 +142,8 @@ func main() {
 			},
 		},
 	}
-	app.Before = func(context *cli.Context) (err error) {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return
-		}
-		SVHome = filepath.Join(homeDir, ".sv")
-		SVRoot = filepath.Join(SVHome, "go")
-		SVBin = filepath.Join(SVHome, "bin")
-		SVDownload = filepath.Join(SVHome, "downloads")
-		SVCache = filepath.Join(SVHome, "cache")
-		if err = os.MkdirAll(SVDownload, 0755); err != nil {
-			return err
-		}
-		if err = os.MkdirAll(SVCache, 0755); err != nil {
-			return err
-		}
-		if err = os.MkdirAll(SVBin, 0755); err != nil {
-			return err
-		}
-		return
+	app.Before = func(context *cli.Context) error {
+		return initPaths()
 	}
 
 	err := app.Run(os.Args)
@@ -132,6 +166,9 @@ func runApp(c *cli.Context) (err error) {
 		remote: c.Bool("remote"),
 		force:  c.Bool("force"),
 		latest: c.String("latest"),
+		keep:   c.Int("keep"),
+		all:    c.Bool("all"),
+		dryRun: c.Bool("dry-run"),
 	}
 	a := newApp(opts)
 	err = a.Start()

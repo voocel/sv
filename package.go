@@ -46,7 +46,7 @@ func (p *Package) download() error {
 }
 
 func (p *Package) checkSum() error {
-	filePath := filepath.Join(SVDownload, p.Name)
+	filePath := filepath.Join(paths.Download, p.Name)
 	f, err := os.Open(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to open file for checksum: %w", err)
@@ -86,13 +86,13 @@ func (p *Package) useDownloaded() error {
 		}
 	}
 
-	if err := Extract(SVCache, filepath.Join(SVDownload, p.Name)); err != nil {
+	if err := Extract(paths.Cache, filepath.Join(paths.Download, p.Name)); err != nil {
 		return err
 	}
 	PrintGreen("extract success")
 
 	normalizedTag := normalizeVersionTag(p.Tag)
-	if err := os.Rename(filepath.Join(SVCache, "go"), filepath.Join(SVCache, normalizedTag)); err != nil {
+	if err := os.Rename(filepath.Join(paths.Cache, "go"), filepath.Join(paths.Cache, normalizedTag)); err != nil {
 		return err
 	}
 
@@ -139,16 +139,16 @@ func (p *Package) remove() error {
 func (p *Package) removeLocal() error {
 	tag := normalizeVersionTag(p.Tag)
 
-	path, err := os.Readlink(SVRoot)
-	if err == nil && filepath.Base(path) == tag {
+	linkPath, err := os.Readlink(paths.Root)
+	if err == nil && filepath.Base(linkPath) == tag {
 		return ErrVersionInUse(tag)
 	}
 
-	if err := os.RemoveAll(filepath.Join(SVCache, tag)); err != nil {
+	if err := os.RemoveAll(filepath.Join(paths.Cache, tag)); err != nil {
 		return fmt.Errorf("failed to remove cached version: %w", err)
 	}
 
-	if err := os.RemoveAll(filepath.Join(SVDownload, p.Name)); err != nil {
+	if err := os.RemoveAll(filepath.Join(paths.Download, p.Name)); err != nil {
 		return fmt.Errorf("failed to remove downloaded file: %w", err)
 	}
 
@@ -156,7 +156,7 @@ func (p *Package) removeLocal() error {
 }
 
 func (p *Package) getLocalVersion() (versions []string, err error) {
-	folder := filepath.Join(SVCache, "*")
+	folder := filepath.Join(paths.Cache, "*")
 	versions, err = filepath.Glob(folder)
 	if err != nil {
 		return
@@ -168,23 +168,23 @@ func (p *Package) getLocalVersion() (versions []string, err error) {
 }
 
 func execute(tag string) (err error) {
-	if err = os.RemoveAll(SVRoot); err != nil {
+	if err = os.RemoveAll(paths.Root); err != nil {
 		return fmt.Errorf("failed to remove existing Go installation: %w", err)
 	}
-	if err = os.Symlink(filepath.Join(SVCache, tag), SVRoot); err != nil {
+	if err = os.Symlink(filepath.Join(paths.Cache, tag), paths.Root); err != nil {
 		return fmt.Errorf("failed to create symlink: %w", err)
 	}
 
-	goBin := filepath.Join(SVRoot, "bin", "go")
+	goBin := filepath.Join(paths.Root, "bin", "go")
 	cmd := exec.Command(goBin, "version")
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	newPath := filepath.Join(SVRoot, "bin")
+	newPath := filepath.Join(paths.Root, "bin")
 	if p := os.Getenv("PATH"); p != "" {
 		newPath += string(filepath.ListSeparator) + p
 	}
-	cmd.Env = setEnv(append(os.Environ(), "GOROOT="+SVRoot, "PATH="+newPath))
+	cmd.Env = setEnv(append(os.Environ(), "GOROOT="+paths.Root, "PATH="+newPath))
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to execute go version: %w", err)
 	}
@@ -210,13 +210,11 @@ func ExecCommand(command string) (stdout, stderr string, err error) {
 }
 
 func inDownload(name string) bool {
-	path := filepath.Join(SVDownload, name)
-	return Exists(path)
+	return Exists(filepath.Join(paths.Download, name))
 }
 
 func inCache(tag string) bool {
-	path := filepath.Join(SVCache, tag)
-	return Exists(path)
+	return Exists(filepath.Join(paths.Cache, tag))
 }
 
 func setEnv(env []string) []string {
@@ -238,4 +236,14 @@ func setEnv(env []string) []string {
 		}
 	}
 	return out
+}
+
+// getCurrentVersion returns the currently active Go version
+// by reading the symlink at paths.Root
+func getCurrentVersion() string {
+	linkPath, err := os.Readlink(paths.Root)
+	if err != nil {
+		return ""
+	}
+	return filepath.Base(linkPath)
 }

@@ -9,6 +9,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -35,6 +37,8 @@ type Bar struct {
 	total   int64
 	tmpl    *template.Template
 	done    chan struct{}
+	closed  atomic.Bool
+	mu      sync.Mutex
 }
 
 // NewBar return a new bar with the given total
@@ -126,13 +130,18 @@ func (b *Bar) SetEmpty(s string, color ...string) {
 
 // Add the specified amount to the progressbar
 func (b *Bar) Add(n int64) {
+	b.mu.Lock()
 	b.current += n
 	if b.current > b.total {
-		Warnf("Progress current (%d) exceeds total (%d), capping to total", b.current, b.total)
 		b.current = b.total
 	}
-	if b.current == b.total {
+	shouldClose := b.current == b.total
+	if shouldClose {
 		b.Status = "Success"
+	}
+	b.mu.Unlock()
+
+	if shouldClose {
 		b.Close()
 	}
 }
@@ -264,7 +273,9 @@ func (b *Bar) bytesToSize(bytes int64) string {
 	return strconv.FormatFloat(r, 'f', 2, 64) + " " + sizes[int(i)]
 }
 
-// Close the rate listen
+// Close the rate listen safely (can be called multiple times)
 func (b *Bar) Close() {
-	close(b.done)
+	if b.closed.CompareAndSwap(false, true) {
+		close(b.done)
+	}
 }

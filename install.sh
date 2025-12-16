@@ -1,13 +1,13 @@
 #!/bin/bash
 # SV (Switch Version) Installer
 # https://github.com/voocel/sv
-# 
+#
 # Pretty Go Version Manager
 
 set -eu
 
 # Constants
-readonly SV_VERSION="${SV_VERSION:-latest}"
+SV_VERSION="${SV_VERSION:-latest}"
 readonly SV_HOME="${SV_HOME:-$HOME/.sv}"
 readonly INSTALL_DIR="${INSTALL_DIR:-$HOME/.sv/bin}"
 readonly REPO_URL="https://github.com/voocel/sv"
@@ -168,25 +168,32 @@ download_sv() {
 # Generate environment file (original functionality)
 gen_env() {
     log "Generating environment configuration"
-    
+
     # Ensure SV_HOME directory exists
     mkdir -p "$SV_HOME"
-    
-    cat > "$SV_HOME/env" << EOF
+
+    # Use user's GOPROXY if set, otherwise use default
+    local goproxy="${GOPROXY:-https://proxy.golang.org,direct}"
+
+    # Use single quotes to prevent variable expansion, keeping $HOME dynamic
+    cat > "$SV_HOME/env" << 'ENVEOF'
 #!/bin/sh
 # sv shell setup
-case ":\${PATH}:" in
+case ":${PATH}:" in
     *:"$HOME/.sv/go/bin:$HOME/.sv/bin":*)
         ;;
     *)
         export GO111MODULE=auto
-        export SVHOME=$HOME/.sv
-        export GOROOT=$HOME/.sv/go
-        export GOPROXY=https://goproxy.cn,direct
-        export PATH="$HOME/.sv/go/bin:$HOME/.sv/bin:\$PATH"
+        export SVHOME="$HOME/.sv"
+        export GOROOT="$HOME/.sv/go"
+ENVEOF
+    # Append GOPROXY with the resolved value
+    echo "        export GOPROXY=$goproxy" >> "$SV_HOME/env"
+    cat >> "$SV_HOME/env" << 'ENVEOF'
+        export PATH="$HOME/.sv/go/bin:$HOME/.sv/bin:$PATH"
         ;;
 esac
-EOF
+ENVEOF
 }
 
 # Shell detection
@@ -232,7 +239,7 @@ set_env() {
 # Create GOPATH directory structure
 setup_go_directories() {
     log "Setting up Go directory structure"
-    mkdir -p "$GOPATH"/{src,pkg,bin} "$GOROOT"
+    mkdir -p "$GOPATH/src" "$GOPATH/pkg" "$GOPATH/bin" "$GOROOT"
 }
 
 # Verify installation
@@ -268,31 +275,31 @@ print_success() {
 # Main installation flow
 main() {
     local version svbin
-    
+
     setup_colors
     print_banner
-    
+
+    # Pre-flight checks first
+    check_dependencies
+    svbin=$(get_svbin)
+
     step "[1/4] Fetching sv latest version"
     if [ "$SV_VERSION" = "latest" ]; then
         version=$(get_latest_version)
     else
         version="$SV_VERSION"
     fi
-    info "Latest version: $version"
-    
-    # Pre-flight checks
-    check_dependencies
-    svbin=$(get_svbin)
-    
+    info "Version to install: $version"
+
     step "[2/4] Downloading sv binary"
     download_sv "$version" "$svbin"
     verify_installation
-    
+
     step "[3/4] Setting up environment"
     gen_env
     set_env
     setup_go_directories
-    
+
     step "[4/4] Installation completed"
     print_success
 }
@@ -307,6 +314,7 @@ case "${1:-}" in
         echo "Options:"
         echo "  --help           Show this help"
         echo "  --version VER    Install specific version (default: latest)"
+        echo "  --force          Force reinstall even if already installed"
         echo ""
         echo "Environment variables:"
         echo "  SV_VERSION       Version to install"
@@ -319,15 +327,22 @@ case "${1:-}" in
     --version)
         shift
         SV_VERSION="${1:-latest}"
+        shift 2>/dev/null || true
+        ;;
+    --force)
+        FORCE_INSTALL=1
+        shift
         ;;
 esac
 
+FORCE_INSTALL="${FORCE_INSTALL:-0}"
+
 # Check if already installed (original logic)
 set +u
-if [ -d "${SV_HOME}" ] && [ -f "${SV_HOME}/bin/sv" ]; then
+if [ -d "${SV_HOME}" ] && [ -f "${SV_HOME}/bin/sv" ] && [ "$FORCE_INSTALL" != "1" ]; then
     setup_colors
     warn "sv is already installed at ${SV_HOME}"
-    warn "Delete the directory (${SV_HOME}) and reinstall if needed"
+    warn "Use --force to reinstall, or delete the directory and reinstall"
     info "Or run: rm -rf ${SV_HOME} && curl -sL https://raw.githubusercontent.com/voocel/sv/main/install.sh | sh"
     exit 0
 fi
