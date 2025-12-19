@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -47,6 +48,14 @@ func (a *app) Start() error {
 		return a.handleUninstall()
 	case "prune":
 		return a.handlePrune()
+	case "current":
+		return a.handleCurrent()
+	case "where":
+		return a.handleWhere()
+	case "latest":
+		return a.handleLatest()
+	case "outdated":
+		return a.handleOutdated()
 	case "upgrade":
 		return a.handleUpgrade()
 	default:
@@ -353,5 +362,147 @@ func (a *app) handlePrune() error {
 	}
 
 	PrintGreen(fmt.Sprintf("Pruned %d version(s), kept %d version(s)", removed, len(toKeep)))
+	return nil
+}
+
+func (a *app) handleCurrent() error {
+	current := getCurrentVersion()
+	if current == "" {
+		return NewInfo("no Go version is currently active")
+	}
+	fmt.Println(current)
+	return nil
+}
+
+func (a *app) handleWhere() error {
+	if a.opts.target == "" {
+		// If no version specified, show current version path
+		current := getCurrentVersion()
+		if current == "" {
+			return NewInfo("no Go version is currently active, specify a version: sv where <version>")
+		}
+		a.opts.target = current
+	}
+
+	tag := normalizeVersionTag(a.opts.target)
+	versionPath := filepath.Join(paths.Cache, tag)
+
+	if !Exists(versionPath) {
+		return NewError(fmt.Sprintf("version %s is not installed", a.opts.target))
+	}
+
+	fmt.Println(versionPath)
+	return nil
+}
+
+func (a *app) handleLatest() error {
+	resp, err := a.client.Get(cfg.BaseURL + "/dl")
+	if err != nil {
+		return fmt.Errorf("failed to fetch version list: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("failed to fetch version list: status %d", resp.StatusCode)
+	}
+
+	parser, err := NewParser(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	stable := parser.Stable()
+	if len(stable) == 0 {
+		return NewError("no stable versions found")
+	}
+
+	// Find the latest version
+	var versions []string
+	for name := range stable {
+		versions = append(versions, name)
+	}
+
+	sort.Slice(versions, func(i, j int) bool {
+		return versionCompare(versions[i]) > versionCompare(versions[j])
+	})
+
+	latest := versions[0]
+	fmt.Println(latest)
+	return nil
+}
+
+func (a *app) handleOutdated() error {
+	pkg := &Package{}
+	localVersions, err := pkg.getLocalVersion()
+	if err != nil {
+		return err
+	}
+
+	if len(localVersions) == 0 {
+		return NewInfo("no installed versions")
+	}
+
+	// Fetch latest version
+	resp, err := a.client.Get(cfg.BaseURL + "/dl")
+	if err != nil {
+		return fmt.Errorf("failed to fetch version list: %w", err)
+	}
+	defer resp.Body.Close()
+
+	parser, err := NewParser(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	stable := parser.Stable()
+	var remoteVersions []string
+	for name := range stable {
+		remoteVersions = append(remoteVersions, name)
+	}
+
+	sort.Slice(remoteVersions, func(i, j int) bool {
+		return versionCompare(remoteVersions[i]) > versionCompare(remoteVersions[j])
+	})
+
+	if len(remoteVersions) == 0 {
+		return NewError("failed to fetch remote versions")
+	}
+
+	latest := remoteVersions[0]
+	current := getCurrentVersion()
+
+	// Sort local versions
+	sort.Slice(localVersions, func(i, j int) bool {
+		return versionCompare(localVersions[i]) > versionCompare(localVersions[j])
+	})
+
+	PrintCyan(fmt.Sprintf("Latest available: %s", latest))
+	if current != "" {
+		PrintCyan(fmt.Sprintf("Current active:   %s", current))
+	}
+	fmt.Println()
+
+	hasOutdated := false
+	for _, v := range localVersions {
+		marker := "  "
+		if v == current {
+			marker = "* "
+		}
+
+		if versionCompare(v) < versionCompare(latest) {
+			hasOutdated = true
+			PrintYellow(fmt.Sprintf("%s%s -> %s (outdated)", marker, v, latest))
+		} else if v == latest {
+			PrintGreen(fmt.Sprintf("%s%s (latest)", marker, v))
+		} else {
+			PrintGreen(fmt.Sprintf("%s%s", marker, v))
+		}
+	}
+
+	if !hasOutdated {
+		fmt.Println()
+		PrintGreen("All versions are up to date!")
+	}
+
 	return nil
 }

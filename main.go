@@ -128,6 +128,27 @@ func main() {
 				},
 			},
 		}, {
+			Name:      "current",
+			Usage:     "show the currently active Go version",
+			UsageText: "sv current",
+			Action:    baseCmd,
+			Aliases:   []string{"c"},
+		}, {
+			Name:      "where",
+			Usage:     "show the installation path of a Go version",
+			UsageText: "sv where <version>",
+			Action:    baseCmd,
+		}, {
+			Name:      "latest",
+			Usage:     "show the latest available Go version",
+			UsageText: "sv latest",
+			Action:    baseCmd,
+		}, {
+			Name:      "outdated",
+			Usage:     "check if installed versions are outdated",
+			UsageText: "sv outdated",
+			Action:    baseCmd,
+		}, {
 			Name:      "upgrade",
 			Usage:     "upgrade sv",
 			UsageText: "sv upgrade",
