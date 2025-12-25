@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"crypto/sha1"
 	"crypto/sha256"
 	"fmt"
@@ -126,10 +125,14 @@ func (p *Package) use() (err error) {
 }
 
 func (p *Package) install() error {
-	if err := p.removeLocal(); err != nil {
+	if err := p.download(); err != nil {
 		return err
 	}
-	return p.useRemote()
+
+	tag := normalizeVersionTag(p.Tag)
+	os.RemoveAll(filepath.Join(paths.Cache, tag))
+
+	return p.useDownloaded()
 }
 
 func (p *Package) remove() error {
@@ -148,9 +151,7 @@ func (p *Package) removeLocal() error {
 		return fmt.Errorf("failed to remove cached version: %w", err)
 	}
 
-	if err := os.RemoveAll(filepath.Join(paths.Download, p.Name)); err != nil {
-		return fmt.Errorf("failed to remove downloaded file: %w", err)
-	}
+	os.RemoveAll(filepath.Join(paths.Download, p.Name))
 
 	return nil
 }
@@ -184,29 +185,11 @@ func execute(tag string) (err error) {
 	if p := os.Getenv("PATH"); p != "" {
 		newPath += string(filepath.ListSeparator) + p
 	}
-	cmd.Env = setEnv(append(os.Environ(), "GOROOT="+paths.Root, "PATH="+newPath))
+	cmd.Env = dedupEnv(append(os.Environ(), "GOROOT="+paths.Root, "PATH="+newPath))
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to execute go version: %w", err)
 	}
 	return nil
-}
-
-// ExecCommand use shell /bin/bash -c to execute command
-func ExecCommand(command string) (stdout, stderr string, err error) {
-	var out bytes.Buffer
-	var errout bytes.Buffer
-	cmd := exec.Command("/bin/bash", "-c", command)
-	if runtime.GOOS == "windows" {
-		cmd = exec.Command("cmd")
-	}
-	cmd.Stdout = &out
-	cmd.Stderr = &errout
-	err = cmd.Run()
-	if err != nil {
-		stderr = string(errout.Bytes())
-	}
-	stdout = string(out.Bytes())
-	return
 }
 
 func inDownload(name string) bool {
@@ -217,29 +200,25 @@ func inCache(tag string) bool {
 	return Exists(filepath.Join(paths.Cache, tag))
 }
 
-func setEnv(env []string) []string {
+// dedupEnv removes duplicate environment variables, keeping the last value
+func dedupEnv(env []string) []string {
 	out := make([]string, 0, len(env))
-	saw := map[string]int{}
+	seen := make(map[string]int, len(env))
 	for _, kv := range env {
-		eq := strings.Index(kv, "=")
-		if eq < 1 {
-			out = append(out, kv)
-			continue
+		if idx := strings.Index(kv, "="); idx > 0 {
+			key := strings.ToLower(kv[:idx])
+			if i, ok := seen[key]; ok {
+				out[i] = kv
+				continue
+			}
+			seen[key] = len(out)
 		}
-		k := kv[:eq]
-		k = strings.ToLower(k)
-		if dupIdx, isDup := saw[k]; isDup {
-			out[dupIdx] = kv
-		} else {
-			saw[k] = len(out)
-			out = append(out, kv)
-		}
+		out = append(out, kv)
 	}
 	return out
 }
 
 // getCurrentVersion returns the currently active Go version
-// by reading the symlink at paths.Root
 func getCurrentVersion() string {
 	linkPath, err := os.Readlink(paths.Root)
 	if err != nil {

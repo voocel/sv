@@ -8,14 +8,11 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 )
 
 type Upgrade struct {
-	force       bool
-	latestTag   string
-	downloadURL string
-	client      *http.Client
+	force  bool
+	client *http.Client
 }
 
 type Release struct {
@@ -25,76 +22,74 @@ type Release struct {
 
 type Asset struct {
 	Name               string `json:"name"`
-	ContentType        string `json:"content_type"`
+	Size               int64  `json:"size"`
 	BrowserDownloadURL string `json:"browser_download_url"`
 }
 
 func NewUpgrade(force bool) *Upgrade {
 	return &Upgrade{
-		force: force,
-		client: &http.Client{
-			Timeout: cfg.HTTPTimeout,
-		},
+		force:  force,
+		client: &http.Client{Timeout: cfg.HTTPTimeout},
 	}
 }
 
 func (u *Upgrade) checkUpgrade() error {
 	PrintCyan("Checking version...")
-	resp, err := u.client.Get(cfg.UpgradeAPIURL)
+
+	release, err := u.fetchLatestRelease()
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
 
-	latest := &Release{}
-	err = json.NewDecoder(resp.Body).Decode(latest)
-	if err != nil {
-		return ErrLatestVersionFailed()
+	if !u.force && versionCompare(Ver) >= versionCompare(release.TagName) {
+		return ErrAlreadyLatest(release.TagName)
 	}
 
-	if !u.force && versionCompare(Ver) >= versionCompare(latest.TagName) {
-		return ErrAlreadyLatest(latest.TagName)
+	asset := u.findMatchingAsset(release.Assets)
+	if asset == nil {
+		return fmt.Errorf("no binary found for %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
 
-	// Detect current system architecture and find matching binary
-	// Binary naming convention: sv-{os}-{arch} where arch uses hyphen (e.g., arm-64, amd-64)
-	osName := runtime.GOOS
-	archName := runtime.GOARCH
-	// Convert GOARCH format to release asset format
-	switch archName {
-	case "amd64":
-		archName = "amd-64"
-	case "arm64":
-		archName = "arm-64"
-	}
-	currentArch := fmt.Sprintf("%s-%s", osName, archName)
-	var matchedAsset *Asset
-
-	for _, asset := range latest.Assets {
-		if strings.Contains(asset.Name, currentArch) {
-			matchedAsset = &asset
-			break
-		}
-	}
-
-	if matchedAsset == nil {
-		return fmt.Errorf("no binary found for current architecture (%s)", currentArch)
-	}
-
-	u.downloadURL = matchedAsset.BrowserDownloadURL
-	PrintBlue(fmt.Sprintf("Found matching version: %s", matchedAsset.Name))
-
-	return u.upgrade()
+	PrintBlue(fmt.Sprintf("Upgrading to %s (%s)", release.TagName, asset.Name))
+	return u.downloadAndInstall(asset)
 }
 
-func (u *Upgrade) upgrade() error {
-	filename := filepath.Base(u.downloadURL)
-	downloadPath := filepath.Join(paths.Bin, filename)
-
-	PrintBlue("Downloading the newest version...")
-	resp, err := u.client.Get(u.downloadURL)
+func (u *Upgrade) fetchLatestRelease() (*Release, error) {
+	resp, err := u.client.Get(cfg.UpgradeAPIURL)
 	if err != nil {
-		return fmt.Errorf("failed to download upgrade: %w", err)
+		return nil, fmt.Errorf("failed to check for updates: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
+	}
+
+	var release Release
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return nil, ErrLatestVersionFailed()
+	}
+	return &release, nil
+}
+
+func (u *Upgrade) findMatchingAsset(assets []Asset) *Asset {
+	expected := fmt.Sprintf("sv-%s-%s", runtime.GOOS, runtime.GOARCH)
+	if runtime.GOOS == "windows" {
+		expected += ".exe"
+	}
+
+	for i := range assets {
+		if assets[i].Name == expected {
+			return &assets[i]
+		}
+	}
+	return nil
+}
+
+func (u *Upgrade) downloadAndInstall(asset *Asset) error {
+	resp, err := u.client.Get(asset.BrowserDownloadURL)
+	if err != nil {
+		return fmt.Errorf("failed to download: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -102,26 +97,32 @@ func (u *Upgrade) upgrade() error {
 		return fmt.Errorf("download failed with status %d", resp.StatusCode)
 	}
 
-	f, err := os.OpenFile(downloadPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	bar := NewBar(asset.Size)
+	bar.SetName("sv[upgrade]", "cyan")
+
+	tmpFile := filepath.Join(paths.Bin, ".sv.tmp")
+	f, err := os.OpenFile(tmpFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
 	if err != nil {
-		return fmt.Errorf("failed to create file: %w", err)
-	}
-	defer f.Close()
-
-	if _, err = io.Copy(f, resp.Body); err != nil {
-		return fmt.Errorf("failed to write file: %w", err)
+		return fmt.Errorf("failed to create temp file: %w", err)
 	}
 
-	// Ensure file is closed before rename
+	_, err = io.Copy(io.MultiWriter(f, bar), resp.Body)
 	f.Close()
+	if err != nil {
+		os.Remove(tmpFile)
+		return fmt.Errorf("failed to download: %w", err)
+	}
 
 	targetPath := filepath.Join(paths.Bin, "sv")
-	if err = os.Rename(downloadPath, targetPath); err != nil {
-		return fmt.Errorf("failed to rename binary: %w", err)
+	if runtime.GOOS == "windows" {
+		targetPath += ".exe"
+		oldPath := targetPath + ".old"
+		os.Remove(oldPath)
+		os.Rename(targetPath, oldPath)
 	}
 
-	if err = os.Chmod(targetPath, 0755); err != nil {
-		return fmt.Errorf("failed to set permissions: %w", err)
+	if err := os.Rename(tmpFile, targetPath); err != nil {
+		return fmt.Errorf("failed to install: %w", err)
 	}
 
 	PrintGreen("Upgrade successful!")

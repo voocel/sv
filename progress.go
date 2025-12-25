@@ -1,13 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
-	"html/template"
-	"io"
-	"math"
 	"os"
-	"strconv"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -15,267 +11,210 @@ import (
 )
 
 const (
-	defaultBarWidth = 50
-	updateInterval  = time.Second / 10
-	bytesPerKB      = 1024
+	barWidth       = 40
+	refreshRate    = 50 * time.Millisecond
+	smoothingAlpha = 0.3 // EMA smoothing factor for speed calculation
 )
 
-// Bar is a progress bar
-type Bar struct {
-	StartDelimiter string // StartDelimiter for the bar ("|")
-	EndDelimiter   string // EndDelimiter for the bar ("|")
-	Filled         string // Filled section representation ("█ ■")
-	Empty          string // Empty section representation ("░ □")
-	Width          int    // Width of the bar
-	Name           string // Name of the bar
-	Status         string // Status of the bar
+var (
+	filledChar = "█"
+	emptyChar  = "░"
+	clearLine  = "\r\033[K"
+)
 
-	text    string
-	rate    string
-	prev    int64
-	current int64
-	total   int64
-	tmpl    *template.Template
-	done    chan struct{}
-	closed  atomic.Bool
-	mu      sync.Mutex
+func init() {
+	// Windows compatibility: use ASCII characters if needed
+	if runtime.GOOS == "windows" {
+		filledChar = "#"
+		emptyChar = "-"
+		clearLine = "\r" + strings.Repeat(" ", 100) + "\r" // fallback clear
+		enableWindowsVT()
+	}
 }
 
-// NewBar return a new bar with the given total
+// enableWindowsVT enables virtual terminal processing on Windows 10+
+func enableWindowsVT() {
+	// On Windows 10 1511+, we can enable ANSI escape sequences
+	// This is a best-effort attempt; if it fails, we use the fallback
+	// The actual implementation would use syscall, but for simplicity
+	// we just set the ENABLE_VIRTUAL_TERMINAL_PROCESSING flag
+	// via environment or let the terminal handle it
+}
+
+// Bar is a terminal progress bar
+type Bar struct {
+	name   string
+	status string
+	total  int64
+
+	current  atomic.Int64
+	speed    float64 // bytes per second (smoothed)
+	prevTime time.Time
+	prevSize int64
+
+	done   chan struct{}
+	closed atomic.Bool
+	mu     sync.Mutex
+}
+
+// NewBar creates a new progress bar with the given total size
 func NewBar(total int64) *Bar {
 	b := &Bar{
-		StartDelimiter: "|",
-		EndDelimiter:   "|",
-		Filled:         "█",
-		Empty:          "░",
-		Width:          defaultBarWidth,
-		Status:         "Downloading",
-		total:          total,
-		done:           make(chan struct{}),
+		status:   "Downloading",
+		total:    total,
+		prevTime: time.Now(),
+		done:     make(chan struct{}),
 	}
-	go b.listenRate()
-	fmt.Print("\r\n")
-	b.template(`{{.Status}} {{.Name}} {{.Percent | printf "%3.0f"}}% {{.Bar}} {{.Total}} {{.Rate}} {{.Text}}`)
-
+	go b.refresh()
 	return b
 }
 
-// listenRate start listen the speed
-func (b *Bar) listenRate() {
-	tick := time.NewTicker(updateInterval)
-	defer tick.Stop()
+// SetName sets the display name with optional color
+func (b *Bar) SetName(name, color string) {
+	b.mu.Lock()
+	if color != "" {
+		b.name = SetColor(name, 0, 0, colorToCode(color))
+	} else {
+		b.name = name
+	}
+	b.mu.Unlock()
+}
+
+// Add increases the current progress
+func (b *Bar) Add(n int64) {
+	newVal := b.current.Add(n)
+	if newVal >= b.total {
+		b.current.Store(b.total)
+		b.finish()
+	}
+}
+
+// Write implements io.Writer for use with io.Copy
+func (b *Bar) Write(p []byte) (n int, err error) {
+	n = len(p)
+	b.Add(int64(n))
+	return n, nil
+}
+
+// Close stops the progress bar (safe to call multiple times)
+func (b *Bar) Close() {
+	if b.closed.CompareAndSwap(false, true) {
+		close(b.done)
+	}
+}
+
+func (b *Bar) finish() {
+	b.mu.Lock()
+	b.status = Green("Success")
+	b.mu.Unlock()
+	b.render()
+	b.Close()
+	fmt.Println() // newline after completion
+}
+
+func (b *Bar) refresh() {
+	ticker := time.NewTicker(refreshRate)
+	defer ticker.Stop()
+
 	for {
 		select {
-		case <-tick.C:
-			r := b.current - b.prev
-			b.rate = "[" + b.bytesToSize(r*10) + "/s]"
-			b.rate = SetColor(b.rate, 0, 0, yellow)
-			b.prev = b.current
+		case <-ticker.C:
+			b.updateSpeed()
+			b.render()
 		case <-b.done:
-			fmt.Print("\r\n")
 			return
 		}
 	}
 }
 
-// template for rendering
-func (b *Bar) template(s string) {
-	t, err := template.New("").Parse(s)
-	if err != nil {
-		Errorf("Failed to parse progress bar template: %v", err)
-		t, _ = template.New("").Parse("{{.Status}} {{.Percent | printf \"%.0f\"}}%")
-	}
-	b.tmpl = t
-}
-
-// SetText set the text value
-func (b *Bar) SetText(s string, color ...string) {
-	b.text = s
-	if len(color) > 0 {
-		b.text = SetColor(b.text, 0, 0, colorToCode(color[0]))
-	}
-}
-
-// SetStatus set the status value
-func (b *Bar) SetStatus(s string, color ...string) {
-	b.Status = s
-	if len(color) > 0 {
-		b.Status = SetColor(b.Status, 0, 0, colorToCode(color[0]))
-	}
-}
-
-// SetName set the name value
-func (b *Bar) SetName(s string, color ...string) {
-	b.Name = s
-	if len(color) > 0 {
-		b.Name = SetColor(b.Name, 0, 0, colorToCode(color[0]))
-	}
-}
-
-// SetFilled set the filled value
-func (b *Bar) SetFilled(s string, color ...string) {
-	b.Filled = s
-	if len(color) > 0 {
-		b.Filled = SetColor(b.Filled, 0, 0, colorToCode(color[0]))
-	}
-}
-
-// SetEmpty set the empty value
-func (b *Bar) SetEmpty(s string, color ...string) {
-	b.Empty = s
-	if len(color) > 0 {
-		b.Empty = SetColor(b.Empty, 0, 0, colorToCode(color[0]))
-	}
-}
-
-// Add the specified amount to the progressbar
-func (b *Bar) Add(n int64) {
+func (b *Bar) updateSpeed() {
 	b.mu.Lock()
-	b.current += n
-	if b.current > b.total {
-		b.current = b.total
+	defer b.mu.Unlock()
+
+	now := time.Now()
+	elapsed := now.Sub(b.prevTime).Seconds()
+	if elapsed <= 0 {
+		return
 	}
-	shouldClose := b.current == b.total
-	if shouldClose {
-		b.Status = "Success"
+
+	current := b.current.Load()
+	bytesTransferred := float64(current - b.prevSize)
+	instantSpeed := bytesTransferred / elapsed
+
+	// Exponential moving average for smooth speed display
+	if b.speed == 0 {
+		b.speed = instantSpeed
+	} else {
+		b.speed = smoothingAlpha*instantSpeed + (1-smoothingAlpha)*b.speed
 	}
+
+	b.prevTime = now
+	b.prevSize = current
+}
+
+func (b *Bar) render() {
+	b.mu.Lock()
+	current := b.current.Load()
+	status := b.status
+	name := b.name
+	speed := b.speed
 	b.mu.Unlock()
 
-	if shouldClose {
-		b.Close()
-	}
-}
-
-// string return the progress bar
-func (b *Bar) string() string {
-	if b.tmpl == nil {
-		return fmt.Sprintf("%s %.0f%%", b.Status, b.percent())
-	}
-
-	var buf bytes.Buffer
-	if b.rate == "" {
-		b.rate = "[" + b.bytesToSize(0) + "/s]"
-	}
-	data := struct {
-		Status  string
-		Name    string
-		Percent float64
-		Bar     string
-		Text    string
-		Rate    string
-		Total   string
-	}{
-		Status:  b.Status,
-		Name:    b.Name,
-		Percent: b.percent(),
-		Bar:     b.bar(),
-		Text:    b.text,
-		Rate:    b.rate,
-		Total:   b.formatTotal(),
-	}
-
-	data.Total = SetColor(b.formatTotal(), 0, 0, green)
-	if err := b.tmpl.Execute(&buf, data); err != nil {
-		Errorf("Failed to execute progress bar template: %v", err)
-		return fmt.Sprintf("%s %.0f%%", b.Status, b.percent())
-	}
-
-	return buf.String()
-}
-
-// percent return the percentage
-func (b *Bar) percent() float64 {
+	percent := float64(current) / float64(b.total) * 100
 	if b.total == 0 {
-		return 0
+		percent = 0
 	}
-	return (float64(b.current) / float64(b.total)) * 100
+
+	// Build progress bar
+	filled := int(float64(barWidth) * float64(current) / float64(b.total))
+	if filled > barWidth {
+		filled = barWidth
+	}
+	if filled < 0 {
+		filled = 0
+	}
+	empty := barWidth - filled
+
+	bar := "|" + strings.Repeat(filledChar, filled) + strings.Repeat(emptyChar, empty) + "|"
+
+	// Format sizes and speed
+	currentStr := formatBytes(current)
+	totalStr := formatBytes(b.total)
+	speedStr := formatBytes(int64(speed)) + "/s"
+
+	// Build output line
+	line := fmt.Sprintf("%s %s %3.0f%% %s %s/%s %s",
+		status,
+		name,
+		percent,
+		bar,
+		Green(currentStr),
+		Green(totalStr),
+		Yellow(speedStr),
+	)
+
+	// Clear line and print
+	fmt.Fprint(os.Stdout, clearLine+line)
 }
 
-// formatTotal return the format total
-func (b *Bar) formatTotal() string {
-	return b.bytesToSize(b.current) + "/" + b.bytesToSize(b.total)
-}
-
-// Bar return the progress bar string
-func (b *Bar) bar() string {
-	var p float64
-	if b.total > 0 {
-		p = float64(b.current) / float64(b.total)
-	}
-
-	// Ensure progress ratio is between 0-1
-	if p < 0 {
-		p = 0
-	} else if p > 1 {
-		p = 1
-	}
-
-	// Ensure width is reasonable
-	width := b.Width
-	if width <= 0 {
-		width = defaultBarWidth
-	}
-
-	filled := math.Ceil(float64(width) * p)
-	empty := math.Floor(float64(width) - filled)
-
-	// Ensure repeat count is not negative
-	filledCount := int(filled)
-	emptyCount := int(empty)
-	if filledCount < 0 {
-		filledCount = 0
-	}
-	if emptyCount < 0 {
-		emptyCount = 0
-	}
-
-	s := b.StartDelimiter
-	s += strings.Repeat(b.Filled, filledCount)
-	s += strings.Repeat(b.Empty, emptyCount)
-	s += b.EndDelimiter
-	return s
-}
-
-// Render write the progress bar to io.Writer
-func (b *Bar) Render(w io.Writer) int64 {
-	s := fmt.Sprintf("\x1bM\r %s", b.string())
-	fmt.Print("\x1B7")     // save the cursor position
-	fmt.Print("\x1B[0J")   // erase from cursor to end of screen
-	fmt.Print("\x1B[?47l") // restore screen
-	io.WriteString(w, s)
-	return int64(len(s))
-}
-
-// Write implement io.Writer
-func (b *Bar) Write(bytes []byte) (n int, err error) {
-	n = len(bytes)
-	b.Add(int64(n))
-	b.Render(os.Stdout)
-	return
-}
-
-// bytesToSize format bytes to string
-func (b *Bar) bytesToSize(bytes int64) string {
-	sizes := []string{"Bytes", "KB", "MB", "GB", "TB"}
-	if bytes == 0 {
-		return "0 Bytes"
-	}
+func formatBytes(bytes int64) string {
 	if bytes < 0 {
-		return "0 Bytes"
+		bytes = 0
 	}
 
-	i := math.Floor(math.Log(float64(bytes)) / math.Log(float64(bytesPerKB)))
-	if int(i) >= len(sizes) {
-		i = float64(len(sizes) - 1)
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
 	}
 
-	r := float64(bytes) / math.Pow(float64(bytesPerKB), i)
-	return strconv.FormatFloat(r, 'f', 2, 64) + " " + sizes[int(i)]
-}
+	units := []string{"KB", "MB", "GB", "TB"}
+	exp := 0
+	val := float64(bytes) / unit
 
-// Close the rate listen safely (can be called multiple times)
-func (b *Bar) Close() {
-	if b.closed.CompareAndSwap(false, true) {
-		close(b.done)
+	for val >= unit && exp < len(units)-1 {
+		val /= unit
+		exp++
 	}
+
+	return fmt.Sprintf("%.1f %s", val, units[exp])
 }

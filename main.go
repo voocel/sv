@@ -186,15 +186,10 @@ func runApp(c *cli.Context) (err error) {
 		target: c.Args().First(),
 		remote: c.Bool("remote"),
 		force:  c.Bool("force"),
-		latest: c.String("latest"),
 		keep:   c.Int("keep"),
 		all:    c.Bool("all"),
 		dryRun: c.Bool("dry-run"),
 	}
 	a := newApp(opts)
-	err = a.Start()
-	if err != nil {
-		return err
-	}
-	return
+	return a.Start()
 }

@@ -73,11 +73,11 @@ fatal() {
     exit 1
 }
 
-# Platform detection for binary download (original logic)
+# Platform detection for binary download
 get_svbin() {
     local svbin=''
     local thisos arch
-    
+
     thisos=$(uname -s)
     arch=$(uname -m)
 
@@ -85,31 +85,31 @@ get_svbin() {
        Linux*)
           case $arch in
             arm64|aarch64)
-              svbin="sv-linux-arm-64"
+              svbin="sv-linux-arm64"
               ;;
             *)
-              svbin="sv-linux-amd-64"
+              svbin="sv-linux-amd64"
               ;;
           esac
           ;;
        Darwin*)
           case $arch in
             arm64)
-              svbin="sv-darwin-arm-64"
+              svbin="sv-darwin-arm64"
               ;;
             *)
-              svbin="sv-darwin-amd-64"
+              svbin="sv-darwin-amd64"
               ;;
           esac
           ;;
        Windows*|CYGWIN*|MINGW*|MSYS*)
-          svbin="sv-windows-amd-64.exe"
+          svbin="sv-windows-amd64.exe"
           ;;
         *)
           fatal "Unsupported OS: $thisos"
           ;;
     esac
-    
+
     echo "$svbin"
 }
 

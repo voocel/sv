@@ -18,7 +18,6 @@ type app struct {
 type startOpts struct {
 	cmd    string
 	target string
-	latest string
 	remote bool
 	force  bool
 	// prune options
@@ -29,10 +28,8 @@ type startOpts struct {
 
 func newApp(opts *startOpts) *app {
 	return &app{
-		opts: opts,
-		client: &http.Client{
-			Timeout: cfg.HTTPTimeout,
-		},
+		opts:   opts,
+		client: &http.Client{Timeout: cfg.HTTPTimeout},
 	}
 }
 
@@ -77,7 +74,7 @@ func (a *app) handleUse() error {
 
 	p := &Package{
 		Tag:  a.opts.target,
-		Name: a.tagToName(a.opts.target),
+		Name: generateFileName(a.opts.target),
 	}
 
 	if err := p.useLocal(); err != nil {
@@ -93,8 +90,8 @@ func (a *app) handleInstall() error {
 
 	p := &Package{
 		Tag:  a.opts.target,
-		Name: a.tagToName(a.opts.target),
-		URL:  a.tagToURL(a.opts.target),
+		Name: generateFileName(a.opts.target),
+		URL:  generateDownloadURL(a.opts.target),
 	}
 	return p.install()
 }
@@ -106,7 +103,7 @@ func (a *app) handleUninstall() error {
 
 	p := &Package{
 		Tag:  a.opts.target,
-		Name: a.tagToName(a.opts.target),
+		Name: generateFileName(a.opts.target),
 	}
 	return p.remove()
 }
@@ -126,7 +123,7 @@ func (a *app) promptRemoteInstall(p *Package) error {
 	}
 
 	if ok {
-		p.URL = a.tagToURL(p.Tag)
+		p.URL = generateDownloadURL(p.Tag)
 		return p.useRemote()
 	}
 	return nil
@@ -139,31 +136,25 @@ func (a *app) listRemote() error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to fetch version list: status %d", resp.StatusCode)
 	}
-
-	respDate, err := a.client.Get(cfg.ReleaseURL)
-	if err != nil {
-		return fmt.Errorf("failed to fetch release dates: %w", err)
-	}
-	defer respDate.Body.Close()
 
 	parser, err := NewParser(resp.Body)
 	if err != nil {
 		return err
 	}
 
-	dateParser, err := NewDateParser(respDate.Body)
-	if err != nil {
-		// Non-fatal: continue without release dates
-		Warnf("Could not parse release dates: %v", err)
-	}
-
-	var releases map[string]string
-	if dateParser != nil {
-		releases = dateParser.findReleaseDate()
-		parser.setReleases(releases)
+	// Fetch release dates (optional, non-fatal if fails)
+	if respDate, err := a.client.Get(cfg.ReleaseURL); err == nil {
+		defer respDate.Body.Close()
+		if respDate.StatusCode == http.StatusOK {
+			if dateParser, err := NewDateParser(respDate.Body); err == nil {
+				parser.setReleases(dateParser.findReleaseDate())
+			} else {
+				Warnf("Could not parse release dates: %v", err)
+			}
+		}
 	}
 
 	archive := parser.AllVersions()
@@ -171,7 +162,7 @@ func (a *app) listRemote() error {
 		return NewError("no versions found, the page structure may have changed")
 	}
 
-	versions := a.formatVersions(archive, releases)
+	versions := a.formatVersions(archive, parser.releases)
 	target, err := a.selectVersions(versions)
 	if err != nil {
 		return err
@@ -198,7 +189,7 @@ func (a *app) listLocal() error {
 	}
 
 	pkg.Tag = target
-	pkg.Name = a.tagToName(target)
+	pkg.Name = generateFileName(target)
 	return pkg.useLocal()
 }
 
@@ -251,21 +242,13 @@ func (a *app) getPackage(target string, m map[string]*Version) *Package {
 		return nil
 	}
 
-	filename := a.tagToName(target)
+	filename := generateFileName(target)
 	for _, v := range archive.Packages {
 		if strings.HasPrefix(v.Name, filename) {
 			return v
 		}
 	}
 	return nil
-}
-
-func (a *app) tagToName(tag string) string {
-	return generateFileName(tag)
-}
-
-func (a *app) tagToURL(tag string) string {
-	return generateDownloadURL(tag)
 }
 
 func (a *app) handlePrune() error {
@@ -285,31 +268,33 @@ func (a *app) handlePrune() error {
 	})
 
 	currentVersion := getCurrentVersion()
+	keep := a.opts.keep
+	if keep < 1 {
+		keep = 2
+	}
 
-	var toRemove []string
-	var toKeep []string
+	var toRemove, toKeep []string
+	kept := 0 // count of kept non-current versions
 
-	if a.opts.all {
-		// Remove all except current
-		for _, v := range versions {
-			if v == currentVersion {
+	for _, v := range versions {
+		isCurrent := v == currentVersion
+
+		if a.opts.all {
+			// --all: remove all except current
+			if isCurrent {
 				toKeep = append(toKeep, v)
 			} else {
 				toRemove = append(toRemove, v)
 			}
-		}
-	} else {
-		// Keep the N most recent versions
-		keep := a.opts.keep
-		if keep < 1 {
-			keep = 2
-		}
-
-		for i, v := range versions {
-			if v == currentVersion {
+		} else {
+			// Keep rules:
+			// 1. Current version is always kept (not counted in keep limit)
+			// 2. Keep the N most recent non-current versions
+			if isCurrent {
 				toKeep = append(toKeep, v)
-			} else if i < keep || (currentVersion != "" && i < keep+1) {
+			} else if kept < keep {
 				toKeep = append(toKeep, v)
+				kept++
 			} else {
 				toRemove = append(toRemove, v)
 			}
@@ -349,10 +334,7 @@ func (a *app) handlePrune() error {
 
 	removed := 0
 	for _, v := range toRemove {
-		p := &Package{
-			Tag:  v,
-			Name: a.tagToName(v),
-		}
+		p := &Package{Tag: v, Name: generateFileName(v)}
 		if err := p.removeLocal(); err != nil {
 			Warnf("Failed to remove %s: %v", v, err)
 			continue
@@ -396,37 +378,10 @@ func (a *app) handleWhere() error {
 }
 
 func (a *app) handleLatest() error {
-	resp, err := a.client.Get(cfg.BaseURL + "/dl")
-	if err != nil {
-		return fmt.Errorf("failed to fetch version list: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("failed to fetch version list: status %d", resp.StatusCode)
-	}
-
-	parser, err := NewParser(resp.Body)
+	latest, err := a.fetchLatestVersion()
 	if err != nil {
 		return err
 	}
-
-	stable := parser.Stable()
-	if len(stable) == 0 {
-		return NewError("no stable versions found")
-	}
-
-	// Find the latest version
-	var versions []string
-	for name := range stable {
-		versions = append(versions, name)
-	}
-
-	sort.Slice(versions, func(i, j int) bool {
-		return versionCompare(versions[i]) > versionCompare(versions[j])
-	})
-
-	latest := versions[0]
 	fmt.Println(latest)
 	return nil
 }
@@ -442,36 +397,14 @@ func (a *app) handleOutdated() error {
 		return NewInfo("no installed versions")
 	}
 
-	// Fetch latest version
-	resp, err := a.client.Get(cfg.BaseURL + "/dl")
-	if err != nil {
-		return fmt.Errorf("failed to fetch version list: %w", err)
-	}
-	defer resp.Body.Close()
-
-	parser, err := NewParser(resp.Body)
+	latest, err := a.fetchLatestVersion()
 	if err != nil {
 		return err
 	}
 
-	stable := parser.Stable()
-	var remoteVersions []string
-	for name := range stable {
-		remoteVersions = append(remoteVersions, name)
-	}
-
-	sort.Slice(remoteVersions, func(i, j int) bool {
-		return versionCompare(remoteVersions[i]) > versionCompare(remoteVersions[j])
-	})
-
-	if len(remoteVersions) == 0 {
-		return NewError("failed to fetch remote versions")
-	}
-
-	latest := remoteVersions[0]
 	current := getCurrentVersion()
 
-	// Sort local versions
+	// Sort local versions (newest first)
 	sort.Slice(localVersions, func(i, j int) bool {
 		return versionCompare(localVersions[i]) > versionCompare(localVersions[j])
 	})
@@ -505,4 +438,38 @@ func (a *app) handleOutdated() error {
 	}
 
 	return nil
+}
+
+// fetchLatestVersion fetches the latest stable Go version from go.dev
+func (a *app) fetchLatestVersion() (string, error) {
+	resp, err := a.client.Get(cfg.BaseURL + "/dl")
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch version list: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to fetch version list: status %d", resp.StatusCode)
+	}
+
+	parser, err := NewParser(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	stable := parser.Stable()
+	if len(stable) == 0 {
+		return "", NewError("no stable versions found")
+	}
+
+	var versions []string
+	for name := range stable {
+		versions = append(versions, name)
+	}
+
+	sort.Slice(versions, func(i, j int) bool {
+		return versionCompare(versions[i]) > versionCompare(versions[j])
+	})
+
+	return versions[0], nil
 }

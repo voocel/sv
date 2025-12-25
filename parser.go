@@ -5,20 +5,18 @@ import (
 	"io"
 	"regexp"
 	"strings"
-	"unicode"
 
 	"github.com/PuerkitoBio/goquery"
 )
 
 // CSS selectors for parsing go.dev/dl page
-// These can be updated if go.dev changes their HTML structure
 const (
 	selectorArchive      = "#archive"
 	selectorArchiveItems = "div.toggle"
 	selectorStable       = "#stable"
 	selectorTable        = "table"
 	selectorTableHead    = "thead"
-	selectorTableRow     = "tr"
+	selectorTableBody    = "tbody tr"
 	selectorTableData    = "td"
 	selectorLink         = "a"
 	selectorArticle      = "article"
@@ -29,7 +27,7 @@ type Parser struct {
 	releases map[string]string
 }
 
-// NewParser return a new DOM tree parser
+// NewParser creates a new DOM tree parser
 func NewParser(reader io.Reader) (*Parser, error) {
 	doc, err := goquery.NewDocumentFromReader(reader)
 	if err != nil {
@@ -41,7 +39,7 @@ func NewParser(reader io.Reader) (*Parser, error) {
 	}, nil
 }
 
-// Archived return all archived versions
+// Archived returns all archived versions
 func (p *Parser) Archived() map[string]*Version {
 	result := make(map[string]*Version)
 	p.doc.Find(selectorArchive).Find(selectorArchiveItems).Each(func(i int, selection *goquery.Selection) {
@@ -49,7 +47,6 @@ func (p *Parser) Archived() map[string]*Version {
 		if !ok {
 			return
 		}
-
 		result[version] = &Version{
 			Name:     version,
 			Packages: p.findPackages(version, selection),
@@ -58,7 +55,7 @@ func (p *Parser) Archived() map[string]*Version {
 	return result
 }
 
-// Stable return all Stable versions
+// Stable returns all stable versions
 func (p *Parser) Stable() map[string]*Version {
 	result := make(map[string]*Version)
 	p.doc.Find(selectorStable).NextUntil("#archive,#unstable").Each(func(i int, selection *goquery.Selection) {
@@ -66,7 +63,6 @@ func (p *Parser) Stable() map[string]*Version {
 		if !ok {
 			return
 		}
-
 		result[version] = &Version{
 			Name:     version,
 			Packages: p.findPackages(version, selection.Find(selectorTable).First()),
@@ -75,23 +71,27 @@ func (p *Parser) Stable() map[string]*Version {
 	return result
 }
 
-// AllVersions return all versions
+// AllVersions returns all versions (stable + archived)
 func (p *Parser) AllVersions() map[string]*Version {
-	stables := p.Stable()
-	archives := p.Archived()
-	for s, version := range archives {
-		stables[s] = version
+	result := p.Stable()
+	for k, v := range p.Archived() {
+		result[k] = v
 	}
-	return stables
+	return result
 }
 
 func (p *Parser) findPackages(tag string, table *goquery.Selection) (pkgs []*Package) {
 	alg := strings.TrimSuffix(table.Find(selectorTableHead).Find("th").Last().Text(), " Checksum")
-	table.Find(selectorTableRow).Not("first").Each(func(i int, tr *goquery.Selection) {
+	released := p.releases[tag]
+
+	table.Find(selectorTableBody).Each(func(i int, tr *goquery.Selection) {
 		td := tr.Find(selectorTableData)
-		released := p.releases[tag]
+		name := td.Eq(0).Find(selectorLink).Text()
+		if name == "" {
+			return
+		}
 		pkgs = append(pkgs, &Package{
-			Name:      td.Eq(0).Find(selectorLink).Text(),
+			Name:      name,
 			Tag:       tag,
 			URL:       td.Eq(0).Find(selectorLink).AttrOr("href", ""),
 			Kind:      td.Eq(1).Text(),
@@ -110,48 +110,44 @@ func (p *Parser) setReleases(r map[string]string) {
 	p.releases = r
 }
 
+// DateParser parses release dates from go.dev/doc/devel/release
 type DateParser struct {
-	doc      *goquery.Document
-	releases map[string]string
+	doc *goquery.Document
 }
 
-// NewDateParser return a new DOM tree parser
+// NewDateParser creates a new date parser
 func NewDateParser(reader io.Reader) (*DateParser, error) {
 	doc, err := goquery.NewDocumentFromReader(reader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse release date document: %w", err)
 	}
-	return &DateParser{
-		doc:      doc,
-		releases: make(map[string]string),
-	}, nil
+	return &DateParser{doc: doc}, nil
 }
 
+// releasePattern matches "go1.21.5 (released 2023-12-05)"
+var releasePattern = regexp.MustCompile(`(go\d+\.\d+(?:\.\d+)?)\s+\(released\s+(\d{4}-\d{2}-\d{2})\)`)
+
 func (p *DateParser) findReleaseDate() map[string]string {
-	releaseRegex := regexp.MustCompile(`go[\s\S]*\)`)
-	p.doc.Find(selectorArticle).Find("p:contains(released)").Each(func(i int, selection *goquery.Selection) {
-		result := releaseRegex.FindString(selection.Text())
-		if result == "" {
-			return
-		}
-		tmp := strings.Split(result, " ")
-		var version, date string
-		if len(tmp) == 3 {
-			version, date = tmp[0], strings.TrimRight(tmp[2], ")")
-		} else if len(tmp) == 2 {
-			version = strings.FieldsFunc(tmp[0], unicode.IsSpace)[0]
-			date = strings.TrimRight(tmp[1], ")")
-		}
-		if version != "" && date != "" {
-			p.releases[version] = date
+	releases := make(map[string]string)
+
+	// Parse from paragraphs containing "released"
+	p.doc.Find(selectorArticle).Find("p").Each(func(i int, selection *goquery.Selection) {
+		text := selection.Text()
+		matches := releasePattern.FindAllStringSubmatch(text, -1)
+		for _, m := range matches {
+			if len(m) == 3 {
+				releases[m[1]] = m[2]
+			}
 		}
 	})
 
+	// Parse from h2 headers (format: "go1.21 (released 2023-08-08)")
 	p.doc.Find(selectorArticle).Find("h2").Each(func(i int, selection *goquery.Selection) {
-		tmp := strings.Split(selection.Text(), " ")
-		if len(tmp) == 3 {
-			p.releases[tmp[0]] = strings.TrimRight(tmp[2], ")")
+		text := selection.Text()
+		if matches := releasePattern.FindStringSubmatch(text); len(matches) == 3 {
+			releases[matches[1]] = matches[2]
 		}
 	})
-	return p.releases
+
+	return releases
 }

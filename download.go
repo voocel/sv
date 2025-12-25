@@ -9,31 +9,21 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 type Downloader struct {
 	concurrency int
-	resume      bool
 	tag         string
 	bar         *Bar
 	client      *http.Client
-}
-
-// PartMeta the file meta info
-type PartMeta struct {
-	Index float32
-	Start int64
-	End   int64
-	Cur   int64
 }
 
 func NewDownloader(concurrency int, tag string) *Downloader {
 	return &Downloader{
 		tag:         tag,
 		concurrency: concurrency,
-		client: &http.Client{
-			Timeout: cfg.HTTPTimeout,
-		},
+		client:      &http.Client{},
 	}
 }
 
@@ -46,7 +36,15 @@ func (d *Downloader) Download(strURL, filename string) error {
 		filename = filepath.Base(strURL)
 	}
 
-	resp, err := d.client.Head(strURL)
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.HTTPTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, strURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := d.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to get file info: %w", err)
 	}
@@ -64,49 +62,64 @@ func (d *Downloader) Download(strURL, filename string) error {
 }
 
 func (d *Downloader) multiDownload(strURL, filename string, contentLen int64) error {
-	d.bar = NewBar(contentLen)
-	d.bar.SetName("sv["+d.tag+"]", "pink")
-
-	partSize := int(contentLen) / d.concurrency
+	partSize := contentLen / int64(d.concurrency)
 	partDir := d.getPartDir(filename)
-	err := os.MkdirAll(partDir, 0755)
-	if err != nil {
+	if err := os.MkdirAll(partDir, 0755); err != nil {
 		return err
 	}
-	defer os.RemoveAll(partDir)
 
-	var wg sync.WaitGroup
-	wg.Add(d.concurrency)
-	rangeStart := 0
+	var downloaded int64
 	for i := 0; i < d.concurrency; i++ {
-		go func(i, rangeStart int) {
-			defer wg.Done()
-			rangeEnd := rangeStart + partSize
-			// in the last part, the total length cannot exceed ContentLength
-			if i == d.concurrency-1 {
-				rangeEnd = int(contentLen)
-			}
+		if info, err := os.Stat(d.getPartFilename(filename, i)); err == nil {
+			downloaded += info.Size()
+		}
+	}
 
-			downloaded := 0
-			if d.resume {
-				partFileName := d.getPartFilename(filename, i)
-				content, err := os.ReadFile(partFileName)
-				if err == nil {
-					downloaded = len(content)
+	d.bar = NewBar(contentLen)
+	d.bar.SetName("sv["+d.tag+"]", "pink")
+	if downloaded > 0 {
+		d.bar.Add(downloaded)
+	}
+
+	var (
+		wg    sync.WaitGroup
+		errCh = make(chan error, d.concurrency)
+	)
+
+	var rangeStart int64
+	for i := 0; i < d.concurrency; i++ {
+		wg.Add(1)
+		rangeEnd := rangeStart + partSize - 1
+		if i == d.concurrency-1 {
+			rangeEnd = contentLen - 1
+		}
+
+		go func(i int, start, end int64) {
+			defer wg.Done()
+			if err := d.downloadPartial(strURL, filename, start, end, i); err != nil {
+				select {
+				case errCh <- fmt.Errorf("part %d: %w", i, err):
+				default:
 				}
 			}
+		}(i, rangeStart, rangeEnd)
 
-			err := d.downloadPartial(strURL, filename, rangeStart+downloaded, rangeEnd, i)
-			if err != nil {
-				Errorf("downloadPartial failed: %v", err)
-			}
-		}(i, rangeStart)
-
-		rangeStart += partSize + 1
+		rangeStart = rangeEnd + 1
 	}
-	wg.Wait()
 
-	return d.merge(filename)
+	wg.Wait()
+	close(errCh)
+
+	if err, ok := <-errCh; ok {
+		return err
+	}
+
+	if err := d.merge(filename); err != nil {
+		return err
+	}
+
+	os.RemoveAll(partDir)
+	return nil
 }
 
 func (d *Downloader) singleDownload(strURL, filename string) error {
@@ -121,8 +134,9 @@ func (d *Downloader) singleDownload(strURL, filename string) error {
 	}
 
 	d.bar = NewBar(resp.ContentLength)
+	d.bar.SetName("sv["+d.tag+"]", "pink")
 
-	f, err := os.OpenFile(filepath.Join(paths.Download, filename), os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(filepath.Join(paths.Download, filename), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
@@ -136,50 +150,59 @@ func (d *Downloader) singleDownload(strURL, filename string) error {
 	return nil
 }
 
-func (d *Downloader) downloadPartial(strURL, filename string, rangeStart, rangeEnd, i int) (err error) {
-	if rangeStart >= rangeEnd {
-		return
+func (d *Downloader) downloadPartial(strURL, filename string, rangeStart, rangeEnd int64, i int) error {
+	partFile := d.getPartFilename(filename, i)
+	expectedSize := rangeEnd - rangeStart + 1
+
+	var downloaded int64
+	if info, err := os.Stat(partFile); err == nil {
+		downloaded = info.Size()
 	}
 
-	req, err := http.NewRequest("GET", strURL, nil)
+	if downloaded >= expectedSize {
+		return nil
+	}
+
+	req, err := http.NewRequest(http.MethodGet, strURL, nil)
 	if err != nil {
-		return
+		return err
+	}
+	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", rangeStart+downloaded, rangeEnd))
+
+	// dynamically calculate the timeout period based on the remaining size
+	remaining := expectedSize - downloaded
+	timeout := time.Duration(remaining/1024/10+30) * time.Second
+	if timeout > 10*time.Minute {
+		timeout = 10 * time.Minute
 	}
 
-	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", rangeStart, rangeEnd))
-	ctx, cancel := context.WithTimeout(context.Background(), cfg.HTTPTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	req = req.WithContext(ctx)
+
 	resp, err := d.client.Do(req)
 	if err != nil {
-		return
+		return err
 	}
 	defer resp.Body.Close()
 
-	flags := os.O_CREATE | os.O_WRONLY
-	if d.resume {
-		flags |= os.O_APPEND
+	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status code %d", resp.StatusCode)
 	}
 
-	partFile, err := os.OpenFile(d.getPartFilename(filename, i), flags, 0644)
+	f, err := os.OpenFile(partFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		return
-	}
-	defer partFile.Close()
-
-	buf := make([]byte, 32*1024)
-	_, err = io.CopyBuffer(io.MultiWriter(partFile, d.bar), resp.Body, buf)
-	if err != nil {
-		if err == io.EOF {
-			return nil
-		}
 		return err
 	}
-	return
+	defer f.Close()
+
+	buf := make([]byte, 32*1024)
+	_, err = io.CopyBuffer(io.MultiWriter(f, d.bar), resp.Body, buf)
+	return err
 }
 
 func (d *Downloader) merge(filename string) error {
-	dstFile, err := os.OpenFile(filepath.Join(paths.Download, filename), os.O_CREATE|os.O_WRONLY, 0644)
+	dstFile, err := os.OpenFile(filepath.Join(paths.Download, filename), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
@@ -189,15 +212,12 @@ func (d *Downloader) merge(filename string) error {
 		partFileName := d.getPartFilename(filename, i)
 		partFile, err := os.Open(partFileName)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to open part %d: %w", i, err)
 		}
 		_, err = io.Copy(dstFile, partFile)
 		partFile.Close()
 		if err != nil {
-			return err
-		}
-		if err := os.Remove(partFileName); err != nil {
-			Warnf("Failed to remove temp file %s: %v", partFileName, err)
+			return fmt.Errorf("failed to merge part %d: %w", i, err)
 		}
 	}
 

@@ -3,11 +3,9 @@ package main
 import (
 	"archive/tar"
 	"archive/zip"
-	"bufio"
 	"compress/gzip"
 	"fmt"
 	"io"
-	"log"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -18,7 +16,7 @@ import (
 
 func normalizeVersionTag(tag string) string {
 	if strings.HasPrefix(tag, "v") {
-		return strings.Replace(tag, "v", "go", 1)
+		return "go" + tag[1:]
 	}
 	if !strings.HasPrefix(tag, "go") {
 		return "go" + tag
@@ -39,63 +37,30 @@ func generateDownloadURL(tag string) string {
 	if strings.HasPrefix(tag, "v") {
 		name = strings.Replace(name, "v", "go", 1)
 	}
-	return fmt.Sprintf("/dl/%s", name)
-}
-
-// RetryConfig holds configuration for retry behavior
-type RetryConfig struct {
-	MaxRetries int
-	BaseDelay  time.Duration
-	MaxDelay   time.Duration
-	Multiplier float64
-	Jitter     bool
-}
-
-// DefaultRetryConfig returns sensible defaults for retry behavior
-func DefaultRetryConfig() RetryConfig {
-	return RetryConfig{
-		MaxRetries: cfg.DownloadRetry,
-		BaseDelay:  500 * time.Millisecond,
-		MaxDelay:   30 * time.Second,
-		Multiplier: 2.0,
-		Jitter:     true,
-	}
+	return "/dl/" + name
 }
 
 // retryFunc executes fn with exponential backoff retry
 func retryFunc(fn func() error, maxRetries int) error {
-	return retryWithConfig(fn, RetryConfig{
-		MaxRetries: maxRetries,
-		BaseDelay:  500 * time.Millisecond,
-		MaxDelay:   30 * time.Second,
-		Multiplier: 2.0,
-		Jitter:     true,
-	})
-}
-
-// retryWithConfig executes fn with configurable exponential backoff
-func retryWithConfig(fn func() error, config RetryConfig) error {
 	var lastErr error
-	delay := config.BaseDelay
+	delay := 500 * time.Millisecond
 
-	for attempt := 0; attempt < config.MaxRetries; attempt++ {
+	for attempt := 0; attempt < maxRetries; attempt++ {
 		if err := fn(); err != nil {
 			lastErr = err
-
-			if attempt < config.MaxRetries-1 {
-				waitTime := delay
-				if config.Jitter {
-					jitter := time.Duration(rand.Int63n(int64(delay)))
-					waitTime = delay + jitter/2
-				}
+			if attempt < maxRetries-1 {
+				// Add jitter to prevent thundering herd
+				jitter := time.Duration(rand.Int63n(int64(delay / 2)))
+				waitTime := delay + jitter
 
 				Warnf("Attempt %d/%d failed: %v, retrying in %v...",
-					attempt+1, config.MaxRetries, err, waitTime)
+					attempt+1, maxRetries, err, waitTime)
 				time.Sleep(waitTime)
 
-				delay = time.Duration(float64(delay) * config.Multiplier)
-				if delay > config.MaxDelay {
-					delay = config.MaxDelay
+				// Exponential backoff with cap
+				delay *= 2
+				if delay > 30*time.Second {
+					delay = 30 * time.Second
 				}
 			}
 			continue
@@ -103,294 +68,196 @@ func retryWithConfig(fn func() error, config RetryConfig) error {
 		return nil
 	}
 
-	return fmt.Errorf("all %d attempts failed, last error: %w", config.MaxRetries, lastErr)
+	return fmt.Errorf("all %d attempts failed, last error: %w", maxRetries, lastErr)
 }
 
+// Extract extracts an archive to the destination directory
 func Extract(dst, src string) error {
 	PrintCyan("extracting...")
 	switch {
 	case strings.HasSuffix(src, ".tar.gz"), strings.HasSuffix(src, ".tgz"):
-		return UnpackTar(dst, src)
+		return unpackTar(dst, src)
 	case strings.HasSuffix(src, ".zip"):
-		return UnpackZip(dst, src)
+		return unpackZip(dst, src)
 	default:
-		return fmt.Errorf("failed to extract %v, unhandled file type", src)
+		return fmt.Errorf("unsupported archive format: %s", src)
 	}
 }
 
-// UnpackTar take a destination path and a reader
-func UnpackTar(dst, src string) error {
+func unpackTar(dst, src string) error {
 	file, err := os.Open(src)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
 
-	var fileReader io.ReadCloser = file
-	if strings.HasSuffix(src, ".gz") {
-		if fileReader, err = gzip.NewReader(file); err != nil {
-			return err
-		}
-		defer fileReader.Close()
-	}
-
-	tr := tar.NewReader(fileReader)
-	for {
-		header, err := tr.Next()
-		switch {
-		// if no more files are found return
-		case err == io.EOF:
-			return nil
-		case err != nil:
-			return err
-		case header == nil:
-			continue
-		}
-
-		//fi := header.FileInfo()
-		//mode := fi.Mode()
-		target := filepath.Join(dst, header.Name)
-		switch header.Typeflag {
-		case tar.TypeDir:
-			if _, err := os.Stat(target); err != nil {
-				if err := os.MkdirAll(target, 0755); err != nil {
-					return err
-				}
-			}
-		case tar.TypeReg:
-			outFile, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR, os.FileMode(header.Mode))
-			if err != nil {
-				return err
-			}
-
-			if _, err := io.Copy(outFile, tr); err != nil {
-				return err
-			}
-			outFile.Close()
-		default:
-			log.Fatalf("uknown type: %v in %s", header.Typeflag, header.Name)
-		}
-	}
-}
-
-// PackTar write each file found to the tar writer
-func PackTar(src string, writers ...io.Writer) error {
-	if _, err := os.Stat(src); err != nil {
-		return fmt.Errorf("unable to tar files: %v", err.Error())
-	}
-
-	gzw := gzip.NewWriter(io.MultiWriter(writers...))
-	defer gzw.Close()
-
-	tw := tar.NewWriter(gzw)
-	defer tw.Close()
-
-	return filepath.Walk(src, func(file string, fi os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !fi.Mode().IsRegular() {
-			return nil
-		}
-
-		header, err := tar.FileInfoHeader(fi, fi.Name())
-		if err != nil {
-			return err
-		}
-		header.Name = strings.TrimPrefix(strings.Replace(file, src, "", -1), string(filepath.Separator))
-		if err := tw.WriteHeader(header); err != nil {
-			return err
-		}
-
-		f, err := os.Open(file)
-		if err != nil {
-			return err
-		}
-		if _, err := io.Copy(tw, f); err != nil {
-			return err
-		}
-		f.Close()
-
-		return nil
-	})
-}
-
-// PackZip a file or a directory
-func PackZip(dst, src string) error {
-	f, err := os.Create(dst)
+	gr, err := gzip.NewReader(file)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer gr.Close()
 
-	writer := zip.NewWriter(f)
-	defer writer.Close()
-
-	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		header, err := zip.FileInfoHeader(info)
-		if err != nil {
-			return err
-		}
-
-		header.Method = zip.Deflate
-		header.Name, err = filepath.Rel(filepath.Dir(src), path)
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			header.Name += "/"
-		}
-
-		headerWriter, err := writer.CreateHeader(header)
-		if err != nil {
-			return err
-		}
-
-		if info.IsDir() {
+	tr := tar.NewReader(gr)
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
 			return nil
 		}
-
-		f, err := os.Open(path)
 		if err != nil {
 			return err
 		}
-		defer f.Close()
+		if header == nil {
+			continue
+		}
 
-		_, err = io.Copy(headerWriter, f)
-		return err
-	})
+		target := filepath.Join(dst, header.Name)
+
+		// Security: prevent path traversal attacks (zip slip)
+		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(dst)+string(os.PathSeparator)) {
+			return fmt.Errorf("illegal file path: %s", header.Name)
+		}
+
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, 0755); err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			if err := extractFile(target, tr, os.FileMode(header.Mode)); err != nil {
+				return err
+			}
+		case tar.TypeSymlink:
+			// Skip symlinks for security
+			continue
+		}
+	}
 }
 
-// UnpackZip will decompress a zip archived file
-func UnpackZip(dst, src string) error {
+func unpackZip(dst, src string) error {
 	r, err := zip.OpenReader(src)
 	if err != nil {
 		return err
 	}
 	defer r.Close()
 
-	err = os.MkdirAll(dst, 0755)
-	if err != nil {
+	if err := os.MkdirAll(dst, 0755); err != nil {
 		return err
 	}
 
-	// closure to resolve file descriptors with defer close
-	extract := func(f *zip.File) error {
+	for _, f := range r.File {
+		target := filepath.Join(dst, f.Name)
+
+		// Security: prevent path traversal attacks (zip slip)
+		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(dst)+string(os.PathSeparator)) {
+			return fmt.Errorf("illegal file path: %s", f.Name)
+		}
+
+		if f.FileInfo().IsDir() {
+			if err := os.MkdirAll(target, 0755); err != nil {
+				return err
+			}
+			continue
+		}
+
+		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+			return err
+		}
+
 		rc, err := f.Open()
 		if err != nil {
 			return err
 		}
-		defer rc.Close()
 
-		path := filepath.Join(dst, f.Name)
-		if !strings.HasPrefix(path, filepath.Clean(dst)+string(os.PathSeparator)) {
-			return fmt.Errorf("illegal file path: %s", path)
-		}
-
-		if f.FileInfo().IsDir() {
-			os.MkdirAll(path, f.Mode())
-		} else {
-			err = os.MkdirAll(filepath.Dir(path), f.Mode())
-			if err != nil {
-				return err
-			}
-			f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
-			if err != nil {
-				return err
-			}
-			defer func() {
-				if err := f.Close(); err != nil {
-					panic(err)
-				}
-			}()
-
-			_, err = io.Copy(f, rc)
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-
-	for _, f := range r.File {
-		err := extract(f)
-		if err != nil {
+		if err := extractFile(target, rc, f.Mode()); err != nil {
+			rc.Close()
 			return err
 		}
+		rc.Close()
 	}
 
 	return nil
 }
 
-// Exists reports whether the named file or directory exists.
-func Exists(path string) bool {
-	if _, err := os.Stat(path); err != nil {
-		if os.IsNotExist(err) {
-			return false
-		}
-	}
-	return true
-}
-
-func checkStringExistsFile(filename, value string) (bool, error) {
-	file, err := os.OpenFile(filename, os.O_RDONLY, 0600)
+func extractFile(target string, r io.Reader, mode os.FileMode) error {
+	f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, err
+		return err
 	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == value {
-			return true, nil
-		}
+	_, err = io.Copy(f, r)
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
 	}
-
-	return false, scanner.Err()
+	return err
 }
 
-func versionCompare(version string) string {
-	if strings.HasPrefix(version, "v") {
-		version = strings.TrimPrefix(version, "v")
-	}
+// Exists reports whether the named file or directory exists
+func Exists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
 
-	// 如果版本字符串为空，返回空字符串
+// versionCompare returns a comparable string for version sorting
+// Handles: go1.21, go1.21.5, go1.22rc1, go1.22beta1
+func versionCompare(version string) string {
+	version = strings.TrimPrefix(version, "v")
+	version = strings.TrimPrefix(version, "go")
+
 	if version == "" {
 		return ""
 	}
 
-	const maxByte = 1<<8 - 1
-	vo := make([]byte, 0, len(version)+8)
-	j := -1
-	for i := 0; i < len(version); i++ {
-		b := version[i]
-		if '0' > b || b > '9' {
-			vo = append(vo, b)
-			j = -1
-			continue
-		}
-		if j == -1 {
-			vo = append(vo, 0x00)
-			j = len(vo) - 1
-		}
-		if j+1 < len(vo) && vo[j] == 1 && vo[j+1] == '0' {
-			vo[j+1] = b
-			continue
-		}
-		if vo[j]+1 > maxByte {
-			// 不要panic，而是返回原始版本
-			return version
-		}
-		vo = append(vo, b)
-		vo[j]++
+	// Remove any suffix like " (2024-01-01)"
+	if idx := strings.Index(version, " "); idx != -1 {
+		version = version[:idx]
 	}
-	return string(vo)
+
+	// Parse version parts
+	var major, minor, patch int
+	var preRelease string
+
+	// Try to parse "1.21.5", "1.21", "1.22rc1", "1.22beta2"
+	n, _ := fmt.Sscanf(version, "%d.%d.%d", &major, &minor, &patch)
+	if n < 3 {
+		// Try "1.21" or "1.21rc1"
+		n, _ = fmt.Sscanf(version, "%d.%d", &major, &minor)
+		patch = 0
+	}
+
+	// Extract pre-release suffix (rc, beta, alpha)
+	for _, pre := range []string{"rc", "beta", "alpha"} {
+		if idx := strings.Index(strings.ToLower(version), pre); idx != -1 {
+			preRelease = strings.ToLower(version[idx:])
+			break
+		}
+	}
+
+	// Build comparable string
+	// Format: MAJOR.MINOR.PATCH.PRERELEASE
+	// Pre-release: "~" for release (sorts last), "!alpha", "!beta", "!rc" (sort before release)
+	result := fmt.Sprintf("%08d.%08d.%08d", major, minor, patch)
+
+	if preRelease == "" {
+		result += ".~" // release version sorts after pre-release
+	} else {
+		// Parse pre-release number
+		var preNum int
+		for _, pre := range []string{"rc", "beta", "alpha"} {
+			if strings.HasPrefix(preRelease, pre) {
+				fmt.Sscanf(preRelease[len(pre):], "%d", &preNum)
+				// alpha < beta < rc < release
+				// Use prefix to ensure correct ordering
+				switch pre {
+				case "alpha":
+					result += fmt.Sprintf(".!a%08d", preNum)
+				case "beta":
+					result += fmt.Sprintf(".!b%08d", preNum)
+				case "rc":
+					result += fmt.Sprintf(".!r%08d", preNum)
+				}
+				break
+			}
+		}
+	}
+
+	return result
 }
