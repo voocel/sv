@@ -9,7 +9,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-const Ver = "v1.2.2"
+const Ver = "v1.2.3"
 
 // Paths holds all application directory paths
 type Paths struct {
