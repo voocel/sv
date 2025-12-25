@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/urfave/cli/v2"
 )
@@ -54,7 +53,6 @@ func main() {
 	app := cli.NewApp()
 	app.Usage = "switch version"
 	app.Version = Ver
-	app.Compiled = time.Now()
 	app.EnableBashCompletion = true
 	//app.CustomAppHelpTemplate = "add sv to your ~/.bashrc or ~/.zshrc. export PATH=\"$HOME/.sv/bin:$PATH\""
 	//app.Action = baseCmd
@@ -67,25 +65,16 @@ func main() {
 			Aliases:   []string{"ls", "l"},
 			Flags: []cli.Flag{
 				&cli.BoolFlag{
-					Name:     "remote",
-					Aliases:  []string{"r"},
-					Usage:    "show all remote versions",
-					Required: false,
+					Name:    "remote",
+					Aliases: []string{"r"},
+					Usage:   "show all remote versions",
 				},
 			},
 		}, {
 			Name:      "use",
-			Usage:     "input a specific local version",
+			Usage:     "switch to a specific Go version",
 			UsageText: "sv use <version>",
 			Action:    baseCmd,
-			Flags: []cli.Flag{
-				&cli.BoolFlag{
-					Name:     "remote",
-					Aliases:  []string{"r"},
-					Usage:    "input a specific remote version",
-					Required: false,
-				},
-			},
 		}, {
 			Name:      "install",
 			Usage:     "install a specific remote version",
@@ -94,9 +83,8 @@ func main() {
 			Aliases:   []string{"i"},
 			Flags: []cli.Flag{
 				&cli.BoolFlag{
-					Name:     "latest",
-					Usage:    "install the latest version",
-					Required: false,
+					Name:  "latest",
+					Usage: "install the latest version",
 				},
 			},
 		}, {
@@ -155,10 +143,9 @@ func main() {
 			Action:    baseCmd,
 			Flags: []cli.Flag{
 				&cli.BoolFlag{
-					Name:     "force",
-					Aliases:  []string{"f"},
-					Usage:    "force upgrade",
-					Required: false,
+					Name:    "force",
+					Aliases: []string{"f"},
+					Usage:   "force upgrade",
 				},
 			},
 		},
@@ -173,23 +160,10 @@ func main() {
 	}
 }
 
-func baseCmd(c *cli.Context) (err error) {
-	if err := runApp(c); err != nil {
-		return cli.Exit(err, 0)
+func baseCmd(c *cli.Context) error {
+	if err := newApp(c).Run(); err != nil {
+		PrintError(err)
+		return cli.Exit("", 1)
 	}
-	return
-}
-
-func runApp(c *cli.Context) (err error) {
-	opts := &startOpts{
-		cmd:    c.Command.Name,
-		target: c.Args().First(),
-		remote: c.Bool("remote"),
-		force:  c.Bool("force"),
-		keep:   c.Int("keep"),
-		all:    c.Bool("all"),
-		dryRun: c.Bool("dry-run"),
-	}
-	a := newApp(opts)
-	return a.Start()
+	return nil
 }

@@ -52,11 +52,7 @@ func ErrAlreadyLatest(version string) error {
 }
 
 func ErrChecksumMismatch() error {
-	return NewError("file checksum does not match the computed checksum")
-}
-
-func ErrUnsupportedAlgorithm() error {
-	return NewError("unsupported checksum algorithm")
+	return NewError("file checksum does not match, file may be corrupted")
 }
 
 func ErrUnsupportedCommand() error {

@@ -32,14 +32,6 @@ func generateFileName(tag string) string {
 	return fmt.Sprintf("%s.%s-%s%s", tag, runtime.GOOS, runtime.GOARCH, ext)
 }
 
-func generateDownloadURL(tag string) string {
-	name := generateFileName(tag)
-	if strings.HasPrefix(tag, "v") {
-		name = strings.Replace(name, "v", "go", 1)
-	}
-	return "/dl/" + name
-}
-
 // retryFunc executes fn with exponential backoff retry
 func retryFunc(fn func() error, maxRetries int) error {
 	var lastErr error

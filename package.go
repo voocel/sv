@@ -1,10 +1,8 @@
 package main
 
 import (
-	"crypto/sha1"
 	"crypto/sha256"
 	"fmt"
-	"hash"
 	"io"
 	"os"
 	"os/exec"
@@ -13,11 +11,6 @@ import (
 	"strings"
 )
 
-type Version struct {
-	Name     string
-	Packages []*Package
-}
-
 type Package struct {
 	Name      string
 	Tag       string
@@ -25,9 +18,7 @@ type Package struct {
 	Kind      string
 	OS        string
 	Arch      string
-	Size      string
-	released  string
-	Checksum  string
+	Checksum  string // SHA256
 	Algorithm string
 }
 
@@ -37,14 +28,17 @@ func (p *Package) download() error {
 	}
 
 	d := NewDownloader(runtime.NumCPU(), p.Tag)
-	downloadURL := cfg.BaseURL + p.URL
 
 	return retryFunc(func() error {
-		return d.Download(downloadURL, p.Name)
+		return d.Download(p.URL, p.Name)
 	}, cfg.DownloadRetry)
 }
 
-func (p *Package) checkSum() error {
+func (p *Package) verifyChecksum() error {
+	if p.Checksum == "" {
+		return nil
+	}
+
 	filePath := filepath.Join(paths.Download, p.Name)
 	f, err := os.Open(filePath)
 	if err != nil {
@@ -52,16 +46,7 @@ func (p *Package) checkSum() error {
 	}
 	defer f.Close()
 
-	var h hash.Hash
-	switch p.Algorithm {
-	case "SHA256":
-		h = sha256.New()
-	case "SHA1":
-		h = sha1.New()
-	default:
-		return ErrUnsupportedAlgorithm()
-	}
-
+	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return fmt.Errorf("failed to read file for checksum: %w", err)
 	}
@@ -79,10 +64,8 @@ func (p *Package) useCached() error {
 }
 
 func (p *Package) useDownloaded() error {
-	if p.Checksum != "" {
-		if err := p.checkSum(); err != nil {
-			return err
-		}
+	if err := p.verifyChecksum(); err != nil {
+		return err
 	}
 
 	if err := Extract(paths.Cache, filepath.Join(paths.Download, p.Name)); err != nil {

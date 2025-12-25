@@ -264,7 +264,7 @@ print_success() {
     info "To get started:"
     info "  1. Restart your shell or run: source $(get_shell_profile)"
     info "  2. Run: sv list"
-    info "  3. Install Go: sv install 1.24"
+    info "  3. Install Go: sv install --latest"
     info ""
     info "For more information:"
     info "  Documentation: $REPO_URL#readme"
@@ -305,40 +305,43 @@ main() {
 }
 
 # Handle command line arguments
-case "${1:-}" in
-    --help|-h)
-        echo "SV (Switch Version) Installer"
-        echo ""
-        echo "Usage: $0 [OPTIONS]"
-        echo ""
-        echo "Options:"
-        echo "  --help           Show this help"
-        echo "  --version VER    Install specific version (default: latest)"
-        echo "  --force          Force reinstall even if already installed"
-        echo ""
-        echo "Environment variables:"
-        echo "  SV_VERSION       Version to install"
-        echo "  SV_HOME          sv home directory (default: ~/.sv)"
-        echo "  INSTALL_DIR      Binary install directory (default: ~/.sv/bin)"
-        echo "  GOPATH           Go workspace (default: ~/go)"
-        echo "  GOROOT           Go installation (default: ~/.sv/go)"
-        exit 0
-        ;;
-    --version)
-        shift
-        SV_VERSION="${1:-latest}"
-        shift 2>/dev/null || true
-        ;;
-    --force)
-        FORCE_INSTALL=1
-        shift
-        ;;
-esac
+FORCE_INSTALL=0
 
-FORCE_INSTALL="${FORCE_INSTALL:-0}"
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --help|-h)
+            echo "SV (Switch Version) Installer"
+            echo ""
+            echo "Usage: $0 [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "  --help           Show this help"
+            echo "  --version VER    Install specific version (default: latest)"
+            echo "  --force          Force reinstall even if already installed"
+            echo ""
+            echo "Environment variables:"
+            echo "  SV_VERSION       Version to install"
+            echo "  SV_HOME          sv home directory (default: ~/.sv)"
+            echo "  INSTALL_DIR      Binary install directory (default: ~/.sv/bin)"
+            echo "  GOPATH           Go workspace (default: ~/go)"
+            echo "  GOROOT           Go installation (default: ~/.sv/go)"
+            exit 0
+            ;;
+        --version)
+            shift
+            SV_VERSION="${1:-latest}"
+            ;;
+        --force)
+            FORCE_INSTALL=1
+            ;;
+        *)
+            warn "Unknown option: $1"
+            ;;
+    esac
+    shift
+done
 
-# Check if already installed (original logic)
-set +u
+# Check if already installed
 if [ -d "${SV_HOME}" ] && [ -f "${SV_HOME}/bin/sv" ] && [ "$FORCE_INSTALL" != "1" ]; then
     setup_colors
     warn "sv is already installed at ${SV_HOME}"
@@ -346,7 +349,6 @@ if [ -d "${SV_HOME}" ] && [ -f "${SV_HOME}/bin/sv" ] && [ "$FORCE_INSTALL" != "1
     info "Or run: rm -rf ${SV_HOME} && curl -sL https://raw.githubusercontent.com/voocel/sv/main/install.sh | sh"
     exit 0
 fi
-set -u
 
 # Run main installation
-main "$@"
+main

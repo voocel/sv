@@ -3,7 +3,7 @@
     <p align="center">Switch golang version</p>
 </p>
 
-SV is a great open source beautiful Go Version Manager
+SV is a lightweight and beautiful Go Version Manager
 
 **English** | [中文](./README.zh-CN.md)
 
@@ -12,43 +12,69 @@ SV is a great open source beautiful Go Version Manager
 ## 🏆 Purpose
 Allows you to easily build and switch different Golang versions
 
-## 💡 Requirements
-*Go version: 1.9.x or later*
-
 ## ⬇️️ Install
-install a release from the command-line
+
+### Linux / macOS
+
+```bash
+curl -sL https://raw.githubusercontent.com/voocel/sv/main/install.sh | sh
 ```
-👉 curl -sL https://raw.githubusercontent.com/voocel/sv/main/install.sh -o - | sh
+
+### Windows (PowerShell)
+
+```powershell
+irm https://raw.githubusercontent.com/voocel/sv/main/install.ps1 | iex
 ```
+
+> After installation, open a **new terminal** for the changes to take effect.
 
 ## 🔥 Features
-* [x] List local or remote all versions
-* [x] Install a specific version
-* [x] Uninstall a specific version
-* [x] Quickly switch local versions
-* [x] Pretty download progress bar
+- List local or remote all versions
+- Install a specific version
+- Uninstall a specific version
+- Quickly switch local versions
+- Pretty download progress bar
+- Resume interrupted downloads
+- Prune old versions
+- Check for outdated versions
 
 ## 🌲 Usage
-*select a version to install*
+
+**List and select a version to install**
 ```bash
-sv
+sv list           # local versions
+sv list -r        # remote versions
 ```
-*install specific version*
+
+**Install specific version**
 ```bash
-sv install 1.18.1
+sv install 1.23.4
+sv install --latest   # install latest stable version
 ```
-*uninstall specific version*
+
+**Switch to a version**
+```bash
+sv use 1.23.4
+```
+
+**Uninstall specific version**
 ```bash
 sv uninstall 1.18.1
 ```
-*install a local specific version*
+
+**Other commands**
 ```bash
-sv use 1.18.1
+sv current        # show current active version
+sv latest         # show latest available version
+sv outdated       # check if installed versions are outdated
+sv where 1.23.4   # show installation path
+sv prune          # remove old versions, keep recent ones
+sv upgrade        # upgrade sv itself
 ```
 
-## ⚠️ License
+## 💡License
 
-Copyright © 2016–2022
+Copyright © 2016–2025
 
 Licensed under [Apache License 2.0](/LICENSE)
 
