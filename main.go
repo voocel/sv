@@ -137,15 +137,27 @@ func main() {
 			UsageText: "sv outdated",
 			Action:    baseCmd,
 		}, {
-			Name:      "upgrade",
-			Usage:     "upgrade sv",
-			UsageText: "sv upgrade",
-			Action:    baseCmd,
-			Flags: []cli.Flag{
-				&cli.BoolFlag{
-					Name:    "force",
-					Aliases: []string{"f"},
-					Usage:   "force upgrade",
+			Name:  "self",
+			Usage: "manage sv itself",
+			Subcommands: []*cli.Command{
+				{
+					Name:      "upgrade",
+					Usage:     "upgrade sv to the latest version",
+					UsageText: "sv self upgrade",
+					Action:    baseCmd,
+					Flags: []cli.Flag{
+						&cli.BoolFlag{
+							Name:    "force",
+							Aliases: []string{"f"},
+							Usage:   "force upgrade",
+						},
+					},
+				},
+				{
+					Name:      "uninstall",
+					Usage:     "uninstall sv and all Go versions",
+					UsageText: "sv self uninstall",
+					Action:    baseCmd,
 				},
 			},
 		},

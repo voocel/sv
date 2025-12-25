@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -25,7 +27,15 @@ func newApp(ctx *cli.Context) *app {
 }
 
 func (a *app) Run() error {
-	switch a.ctx.Command.Name {
+	// Handle subcommands by checking lineage
+	cmdName := a.ctx.Command.Name
+	// Check if this is a subcommand under "self" by looking at Lineage
+	if len(a.ctx.Lineage()) > 2 {
+		// Lineage: [current context, self context, app context]
+		cmdName = "self " + cmdName
+	}
+
+	switch cmdName {
 	case "list":
 		return a.handleList()
 	case "use":
@@ -44,8 +54,10 @@ func (a *app) Run() error {
 		return a.handleLatest()
 	case "outdated":
 		return a.handleOutdated()
-	case "upgrade":
+	case "self upgrade":
 		return a.handleUpgrade()
+	case "self uninstall":
+		return a.handleSelfUninstall()
 	default:
 		return ErrUnsupportedCommand()
 	}
@@ -424,4 +436,156 @@ func (a *app) handleOutdated() error {
 	}
 
 	return nil
+}
+
+func (a *app) handleSelfUninstall() error {
+	// Safety check: ensure we're only deleting the .sv directory
+	if paths.Home == "" || !strings.HasSuffix(paths.Home, ".sv") {
+		return NewError("invalid sv home directory, refusing to uninstall")
+	}
+
+	PrintYellow("This will remove sv and all installed Go versions.")
+	PrintYellow(fmt.Sprintf("Directory to be removed: %s", paths.Home))
+	PrintRed("WARNING: This action cannot be undone!")
+
+	var confirmText string
+	err := survey.AskOne(&survey.Input{
+		Message: "Type 'yes' to confirm uninstall:",
+	}, &confirmText)
+	if err != nil {
+		return err
+	}
+
+	if confirmText != "yes" {
+		PrintBlue("Uninstall cancelled")
+		return nil
+	}
+
+	// Clean environment configuration
+	if runtime.GOOS == "windows" {
+		cleanWindowsEnv()
+	} else {
+		cleanShellProfile()
+	}
+
+	// Remove sv directory
+	if err := os.RemoveAll(paths.Home); err != nil {
+		return NewError(fmt.Sprintf("failed to remove %s: %v", paths.Home, err))
+	}
+
+	PrintGreen("sv has been uninstalled successfully!")
+	if runtime.GOOS == "windows" {
+		PrintCyan("Please open a new terminal for changes to take effect")
+	} else {
+		PrintCyan("Please restart your terminal or run: source ~/.bashrc (or ~/.zshrc)")
+	}
+	return nil
+}
+
+func cleanShellProfile() {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		Warnf("Failed to get home directory: %v", err)
+		return
+	}
+
+	profiles := []string{
+		filepath.Join(homeDir, ".bashrc"),
+		filepath.Join(homeDir, ".bash_profile"),
+		filepath.Join(homeDir, ".zshrc"),
+		filepath.Join(homeDir, ".profile"),
+	}
+
+	// Only match the exact line added by sv installer
+	envLine := `. "$HOME/.sv/env"`
+	cleaned := false
+
+	for _, profile := range profiles {
+		if removeLineFromFile(profile, envLine) {
+			cleaned = true
+		}
+	}
+
+	if cleaned {
+		PrintGreen("Cleaned shell profile")
+	} else {
+		PrintCyan("No sv configuration found in shell profiles")
+	}
+}
+
+func removeLineFromFile(filePath, lineToRemove string) bool {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return false // File doesn't exist or can't be read
+	}
+
+	lines := strings.Split(string(content), "\n")
+	var newLines []string
+	removed := false
+
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		// Only remove the exact sv env line
+		if trimmed == lineToRemove {
+			removed = true
+			// Also remove "# Added by sv installer" comment if it's the previous line
+			if len(newLines) > 0 && strings.TrimSpace(newLines[len(newLines)-1]) == "# Added by sv installer" {
+				newLines = newLines[:len(newLines)-1]
+			}
+			// Remove empty line before comment if exists
+			if len(newLines) > 0 && strings.TrimSpace(newLines[len(newLines)-1]) == "" {
+				newLines = newLines[:len(newLines)-1]
+			}
+			continue
+		}
+		// Preserve file structure
+		if i == len(lines)-1 && line == "" {
+			continue
+		}
+		newLines = append(newLines, line)
+	}
+
+	if !removed {
+		return false
+	}
+
+	if err := os.WriteFile(filePath, []byte(strings.Join(newLines, "\n")+"\n"), 0644); err != nil {
+		Warnf("Failed to update %s: %v", filePath, err)
+		return false
+	}
+	return true
+}
+
+func cleanWindowsEnv() {
+	PrintCyan("Cleaning Windows environment variables...")
+
+	// PowerShell script to clean user environment variables
+	script := fmt.Sprintf(`
+$binDir = '%s'
+$goRoot = '%s'
+
+# Clean PATH
+$userPath = [System.Environment]::GetEnvironmentVariable('PATH', 'User')
+if ($userPath) {
+    $paths = $userPath -split ';' | Where-Object { $_ -ne $binDir -and $_ -ne '' }
+    $newPath = $paths -join ';'
+    [System.Environment]::SetEnvironmentVariable('PATH', $newPath, 'User')
+}
+
+# Clean GOROOT if it points to sv
+$currentGoRoot = [System.Environment]::GetEnvironmentVariable('GOROOT', 'User')
+if ($currentGoRoot -eq $goRoot) {
+    [System.Environment]::SetEnvironmentVariable('GOROOT', $null, 'User')
+}
+`, paths.Bin, paths.Root)
+
+	cmd := exec.Command("powershell", "-NoProfile", "-Command", script)
+	if err := cmd.Run(); err != nil {
+		Warnf("Failed to clean environment variables: %v", err)
+		PrintYellow("Please manually remove the following from your user environment variables:")
+		PrintYellow(fmt.Sprintf("  - Remove '%s' from PATH", paths.Bin))
+		PrintYellow(fmt.Sprintf("  - Remove GOROOT if it points to '%s'", paths.Root))
+	} else {
+		PrintGreen("Cleaned Windows environment variables")
+	}
 }

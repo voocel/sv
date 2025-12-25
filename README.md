@@ -64,12 +64,13 @@ sv uninstall 1.18.1
 
 **Other commands**
 ```bash
-sv current        # show current active version
-sv latest         # show latest available version
-sv outdated       # check if installed versions are outdated
-sv where 1.23.4   # show installation path
-sv prune          # remove old versions, keep recent ones
-sv upgrade        # upgrade sv itself
+sv current          # show current active version
+sv latest           # show latest available version
+sv outdated         # check if installed versions are outdated
+sv where 1.23.4     # show installation path
+sv prune            # remove old versions, keep recent ones
+sv self upgrade     # upgrade sv itself
+sv self uninstall   # uninstall sv and all Go versions
 ```
 
 ## 💡License
