@@ -1,75 +1,81 @@
 package main
 
 import (
+	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 )
 
+// Config holds runtime settings, each overridable via an SV_* environment
+// variable. sv deliberately has no config file.
 type Config struct {
-	UpgradeAPIURL string
-	HTTPTimeout   time.Duration
-	DownloadRetry int
-	Debug         bool
+	UpgradeAPIURL string        // release API used by `sv self upgrade`
+	HTTPTimeout   time.Duration // timeout for API requests
+	DownloadRetry int           // download attempts before giving up
 }
 
-var defaultConfig = &Config{
-	UpgradeAPIURL: "https://api.github.com/repos/voocel/sv/releases/latest",
-	HTTPTimeout:   30 * time.Second,
-	DownloadRetry: 3,
-	Debug:         false,
+func loadConfig() Config {
+	return Config{
+		UpgradeAPIURL: envStr("SV_UPGRADE_API_URL", "https://api.github.com/repos/voocel/sv/releases/latest"),
+		HTTPTimeout:   envDuration("SV_HTTP_TIMEOUT", 30*time.Second),
+		DownloadRetry: envInt("SV_DOWNLOAD_RETRY", 3),
+	}
 }
 
-var cfg *Config
-
-func init() {
-	cfg = loadConfig()
+// Paths is the sv directory layout under ~/.sv.
+type Paths struct {
+	Home      string // ~/.sv
+	Root      string // ~/.sv/go — symlink to the active version
+	Bin       string // ~/.sv/bin — the sv binary itself
+	Cache     string // ~/.sv/cache — installed versions, one dir per tag
+	Downloads string // ~/.sv/downloads — archives in flight
 }
 
-func loadConfig() *Config {
-	config := &Config{
-		UpgradeAPIURL: getEnv("SV_UPGRADE_API_URL", defaultConfig.UpgradeAPIURL),
-		HTTPTimeout:   getEnvDuration("SV_HTTP_TIMEOUT", defaultConfig.HTTPTimeout),
-		DownloadRetry: getEnvInt("SV_DOWNLOAD_RETRY", defaultConfig.DownloadRetry),
-		Debug:         getEnvBool("SV_DEBUG", defaultConfig.Debug),
+func newPaths() (Paths, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return Paths{}, fmt.Errorf("resolve home directory: %w", err)
 	}
 
-	if config.Debug {
-		SetLogLevel("debug")
+	base := filepath.Join(home, ".sv")
+	p := Paths{
+		Home:      base,
+		Root:      filepath.Join(base, "go"),
+		Bin:       filepath.Join(base, "bin"),
+		Cache:     filepath.Join(base, "cache"),
+		Downloads: filepath.Join(base, "downloads"),
 	}
 
-	return config
+	for _, dir := range []string{p.Bin, p.Cache, p.Downloads} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return Paths{}, fmt.Errorf("create directory %s: %w", dir, err)
+		}
+	}
+	return p, nil
 }
 
-func getEnv(key, fallback string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
+func envStr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
 	}
 	return fallback
 }
 
-func getEnvInt(key string, fallback int) int {
-	if value := os.Getenv(key); value != "" {
-		if intValue, err := strconv.Atoi(value); err == nil {
-			return intValue
+func envInt(key string, fallback int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
 		}
 	}
 	return fallback
 }
 
-func getEnvBool(key string, fallback bool) bool {
-	if value := os.Getenv(key); value != "" {
-		if boolValue, err := strconv.ParseBool(value); err == nil {
-			return boolValue
-		}
-	}
-	return fallback
-}
-
-func getEnvDuration(key string, fallback time.Duration) time.Duration {
-	if value := os.Getenv(key); value != "" {
-		if duration, err := time.ParseDuration(value); err == nil {
-			return duration
+func envDuration(key string, fallback time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
 		}
 	}
 	return fallback

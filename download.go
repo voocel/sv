@@ -4,181 +4,139 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
-	"sync"
+	"runtime"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 )
 
-type Downloader struct {
-	concurrency int
-	tag         string
-	bar         *Bar
-	client      *http.Client
+const (
+	probeTimeout    = 30 * time.Second
+	downloadTimeout = 30 * time.Minute
+	multipartMin    = 4 << 20 // below this size a single stream is cheaper
+)
+
+// downloader fetches a URL to a local file with concurrent ranged requests,
+// resume support and a progress bar. It is a single-attempt worker; retry
+// policy lives with the caller.
+type downloader struct {
+	client *http.Client
+	parts  int
 }
 
-func NewDownloader(concurrency int, tag string) *Downloader {
-	return &Downloader{
-		tag:         tag,
-		concurrency: concurrency,
-		client:      &http.Client{},
-	}
+func newDownloader(client *http.Client) *downloader {
+	return &downloader{client: client, parts: runtime.NumCPU()}
 }
 
-func (d *Downloader) Download(strURL, filename string) error {
-	if strURL == "" {
-		return NewError("download URL is empty")
+// fetch downloads url into dest. label is the progress bar caption.
+func (d *downloader) fetch(ctx context.Context, url, dest, label string) error {
+	size, ranged, err := d.probe(ctx, url)
+	if err != nil {
+		return err
 	}
-
-	if filename == "" {
-		filename = filepath.Base(strURL)
+	if ranged && size >= multipartMin && d.parts > 1 {
+		return d.fetchParts(ctx, url, dest, size, label)
 	}
+	return d.fetchSingle(ctx, url, dest, size, label)
+}
 
-	ctx, cancel := context.WithTimeout(context.Background(), cfg.HTTPTimeout)
+// probe asks the server for the file size and range support.
+func (d *downloader) probe(ctx context.Context, url string) (size int64, ranged bool, err error) {
+	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodHead, strURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return 0, false, err
 	}
-
 	resp, err := d.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to get file info: %w", err)
+		return 0, false, fmt.Errorf("probe %s: %w", url, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("server returned status %d for %s", resp.StatusCode, strURL)
+		return 0, false, fmt.Errorf("server returned status %d for %s", resp.StatusCode, url)
 	}
-
-	if resp.Header.Get("Accept-Ranges") == "bytes" && resp.ContentLength > 0 {
-		return d.multiDownload(strURL, filename, resp.ContentLength)
-	}
-
-	return d.singleDownload(strURL, filename)
+	return resp.ContentLength, resp.Header.Get("Accept-Ranges") == "bytes", nil
 }
 
-func (d *Downloader) multiDownload(strURL, filename string, contentLen int64) error {
-	partSize := contentLen / int64(d.concurrency)
-	partDir := d.getPartDir(filename)
-	if err := os.MkdirAll(partDir, 0755); err != nil {
+type partSpan struct {
+	file       string
+	start, end int64
+}
+
+func (d *downloader) fetchParts(ctx context.Context, url, dest string, size int64, label string) error {
+	partDir := dest + ".parts"
+	if err := os.MkdirAll(partDir, 0o755); err != nil {
 		return err
 	}
 
-	var downloaded int64
-	for i := 0; i < d.concurrency; i++ {
-		if info, err := os.Stat(d.getPartFilename(filename, i)); err == nil {
-			downloaded += info.Size()
+	// Split into spans and count bytes already present from a previous run.
+	partSize := size / int64(d.parts)
+	spans := make([]partSpan, d.parts)
+	var resumed int64
+	for i := range spans {
+		start := int64(i) * partSize
+		end := start + partSize - 1
+		if i == d.parts-1 {
+			end = size - 1
 		}
+		file := filepath.Join(partDir, fmt.Sprintf("part-%d", i))
+		if info, err := os.Stat(file); err == nil {
+			resumed += min(info.Size(), end-start+1)
+		}
+		spans[i] = partSpan{file: file, start: start, end: end}
 	}
 
-	d.bar = NewBar(contentLen)
-	d.bar.SetName("sv["+d.tag+"]", "pink")
-	if downloaded > 0 {
-		d.bar.Add(downloaded)
+	bar := newBar(label, size)
+	defer bar.Close()
+	if resumed > 0 {
+		bar.Add(resumed)
 	}
 
-	var (
-		wg    sync.WaitGroup
-		errCh = make(chan error, d.concurrency)
-	)
-
-	var rangeStart int64
-	for i := 0; i < d.concurrency; i++ {
-		wg.Add(1)
-		rangeEnd := rangeStart + partSize - 1
-		if i == d.concurrency-1 {
-			rangeEnd = contentLen - 1
-		}
-
-		go func(i int, start, end int64) {
-			defer wg.Done()
-			if err := d.downloadPartial(strURL, filename, start, end, i); err != nil {
-				select {
-				case errCh <- fmt.Errorf("part %d: %w", i, err):
-				default:
-				}
+	g, gctx := errgroup.WithContext(ctx)
+	for i, sp := range spans {
+		g.Go(func() error {
+			if err := d.fetchPart(gctx, url, sp, bar); err != nil {
+				return fmt.Errorf("part %d: %w", i, err)
 			}
-		}(i, rangeStart, rangeEnd)
-
-		rangeStart = rangeEnd + 1
+			return nil
+		})
 	}
-
-	wg.Wait()
-	close(errCh)
-
-	if err, ok := <-errCh; ok {
+	if err := g.Wait(); err != nil {
 		return err
 	}
 
-	if err := d.merge(filename); err != nil {
+	if err := mergeParts(dest, spans); err != nil {
 		return err
 	}
-
-	os.RemoveAll(partDir)
-	return nil
+	bar.Finish()
+	return os.RemoveAll(partDir)
 }
 
-func (d *Downloader) singleDownload(strURL, filename string) error {
-	resp, err := d.client.Get(strURL)
-	if err != nil {
-		return fmt.Errorf("failed to download file: %w", err)
+func (d *downloader) fetchPart(ctx context.Context, url string, sp partSpan, bar *Bar) error {
+	want := sp.end - sp.start + 1
+	var have int64
+	if info, err := os.Stat(sp.file); err == nil {
+		have = info.Size()
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("server returned status %d for %s", resp.StatusCode, strURL)
-	}
-
-	d.bar = NewBar(resp.ContentLength)
-	d.bar.SetName("sv["+d.tag+"]", "pink")
-
-	f, err := os.OpenFile(filepath.Join(paths.Download, filename), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to create file: %w", err)
-	}
-	defer f.Close()
-
-	buf := make([]byte, 32*1024)
-	_, err = io.CopyBuffer(io.MultiWriter(f, d.bar), resp.Body, buf)
-	if err != nil {
-		return fmt.Errorf("failed to write file: %w", err)
-	}
-	return nil
-}
-
-func (d *Downloader) downloadPartial(strURL, filename string, rangeStart, rangeEnd int64, i int) error {
-	partFile := d.getPartFilename(filename, i)
-	expectedSize := rangeEnd - rangeStart + 1
-
-	var downloaded int64
-	if info, err := os.Stat(partFile); err == nil {
-		downloaded = info.Size()
-	}
-
-	if downloaded >= expectedSize {
+	if have >= want {
 		return nil
 	}
 
-	req, err := http.NewRequest(http.MethodGet, strURL, nil)
+	ctx, cancel := context.WithTimeout(ctx, downloadTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", rangeStart+downloaded, rangeEnd))
-
-	// dynamically calculate the timeout period based on the remaining size
-	remaining := expectedSize - downloaded
-	timeout := time.Duration(remaining/1024/10+30) * time.Second
-	if timeout > 10*time.Minute {
-		timeout = 10 * time.Minute
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	req = req.WithContext(ctx)
+	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", sp.start+have, sp.end))
 
 	resp, err := d.client.Do(req)
 	if err != nil {
@@ -186,48 +144,91 @@ func (d *Downloader) downloadPartial(strURL, filename string, rangeStart, rangeE
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusPartialContent {
+		return fmt.Errorf("expected partial content, got status %d", resp.StatusCode)
 	}
 
-	f, err := os.OpenFile(partFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	f, err := os.OpenFile(sp.file, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
-	buf := make([]byte, 32*1024)
-	_, err = io.CopyBuffer(io.MultiWriter(f, d.bar), resp.Body, buf)
+	_, err = io.Copy(io.MultiWriter(f, bar), resp.Body)
 	return err
 }
 
-func (d *Downloader) merge(filename string) error {
-	dstFile, err := os.OpenFile(filepath.Join(paths.Download, filename), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+func (d *downloader) fetchSingle(ctx context.Context, url, dest string, size int64, label string) error {
+	ctx, cancel := context.WithTimeout(ctx, downloadTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
 	}
-	defer dstFile.Close()
+	resp, err := d.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
 
-	for i := 0; i < d.concurrency; i++ {
-		partFileName := d.getPartFilename(filename, i)
-		partFile, err := os.Open(partFileName)
-		if err != nil {
-			return fmt.Errorf("failed to open part %d: %w", i, err)
-		}
-		_, err = io.Copy(dstFile, partFile)
-		partFile.Close()
-		if err != nil {
-			return fmt.Errorf("failed to merge part %d: %w", i, err)
-		}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("server returned status %d for %s", resp.StatusCode, url)
 	}
 
+	f, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	bar := newBar(label, size)
+	defer bar.Close()
+
+	if _, err := io.Copy(io.MultiWriter(f, bar), resp.Body); err != nil {
+		return err
+	}
+	bar.Finish()
 	return nil
 }
 
-func (d *Downloader) getPartDir(filename string) string {
-	return filepath.Join(paths.Download, strings.SplitN(filepath.Base(filename), ".", 2)[0])
+func mergeParts(dest string, spans []partSpan) error {
+	f, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	for _, sp := range spans {
+		part, err := os.Open(sp.file)
+		if err != nil {
+			return err
+		}
+		_, err = io.Copy(f, part)
+		part.Close()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func (d *Downloader) getPartFilename(filename string, partNum int) string {
-	return filepath.Join(d.getPartDir(filename), fmt.Sprintf("%s-%d", filename, partNum))
+// withRetry runs fn up to attempts times with jittered exponential backoff.
+func withRetry(attempts int, fn func() error) error {
+	attempts = max(attempts, 1)
+	delay := time.Second
+
+	var err error
+	for i := 0; i < attempts; i++ {
+		if err = fn(); err == nil {
+			return nil
+		}
+		if i < attempts-1 {
+			wait := delay + rand.N(delay/2)
+			warnf("attempt %d/%d failed: %v — retrying in %s", i+1, attempts, err, wait.Round(time.Millisecond))
+			time.Sleep(wait)
+			delay = min(delay*2, 10*time.Second)
+		}
+	}
+	return fmt.Errorf("all %d attempts failed: %w", attempts, err)
 }

@@ -29,14 +29,17 @@ irm https://raw.githubusercontent.com/voocel/sv/main/install.ps1 | iex
 > After installation, open a **new terminal** for the changes to take effect.
 
 ## 🔥 Features
-- List local or remote all versions
+- List local or remote all versions (type `/` to filter)
 - Install a specific version
 - Uninstall a specific version
 - Quickly switch local versions
 - Pretty download progress bar
-- Resume interrupted downloads
+- Concurrent download with resume support
+- SHA256 checksum verification for every download
+- No admin rights required, including on Windows
 - Prune old versions
 - Check for outdated versions
+- Self upgrade and self uninstall
 
 ## 🌲 Usage
 
@@ -75,7 +78,7 @@ sv self uninstall   # uninstall sv and all Go versions
 
 ## 💡License
 
-Copyright © 2016–2025
+Copyright © 2016–2026
 
 Licensed under [Apache License 2.0](/LICENSE)
 

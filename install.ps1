@@ -121,13 +121,16 @@ function Set-Environment {
     $userPath = [System.Environment]::GetEnvironmentVariable("PATH", "User")
     if (-not $userPath) { $userPath = "" }
 
-    # Check if already in PATH
-    if ($userPath -notlike "*$binDir*") {
-        $newPath = if ($userPath) { "$binDir;$userPath" } else { $binDir }
+    # Add sv and the active Go toolchain to the persisted user PATH
+    $goBinDir = "$goRoot\bin"
+    $existing = $userPath -split ';'
+    $pathsToAdd = @($binDir, $goBinDir) | Where-Object { $existing -notcontains $_ }
+    if ($pathsToAdd) {
+        $newPath = (@($pathsToAdd) + @($userPath) | Where-Object { $_ }) -join ";"
         [System.Environment]::SetEnvironmentVariable("PATH", $newPath, "User")
-        Write-Success "Added $binDir to user PATH"
+        Write-Success "Added $($pathsToAdd -join ', ') to user PATH"
     } else {
-        Write-Info "$binDir already in PATH"
+        Write-Info "PATH already configured"
     }
 
     # Set GOROOT

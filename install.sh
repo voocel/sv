@@ -183,7 +183,6 @@ case ":${PATH}:" in
     *:"$HOME/.sv/go/bin:$HOME/.sv/bin":*)
         ;;
     *)
-        export GO111MODULE=auto
         export SVHOME="$HOME/.sv"
         export GOROOT="$HOME/.sv/go"
 ENVEOF

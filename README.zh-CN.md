@@ -29,14 +29,17 @@ irm https://raw.githubusercontent.com/voocel/sv/main/install.ps1 | iex
 > 安装完成后，请打开**新的终端窗口**使配置生效。
 
 ## 🔥 功能
-- 列出本地或远程所有版本
+- 列出本地或远程所有版本（输入 `/` 可过滤）
 - 安装指定版本
 - 卸载指定版本
 - 快速切换本地版本
 - 漂亮的下载进度条
-- 支持断点续传
+- 并发下载，支持断点续传
+- 每次下载都进行 SHA256 校验
+- 无需管理员权限（包括 Windows）
 - 清理旧版本
 - 检查版本更新
+- 自升级与自卸载
 
 ## 🌲 使用方法
 
@@ -75,7 +78,7 @@ sv self uninstall   # 卸载 sv 及所有 Go 版本
 
 ## 💡 许可证
 
-Copyright © 2016–2025
+Copyright © 2016–2026
 
 Licensed under [Apache License 2.0](/LICENSE)
 
