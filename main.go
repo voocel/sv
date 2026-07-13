@@ -9,8 +9,9 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-// version is stamped at release time via -ldflags "-X main.version=vX.Y.Z".
-var version = "v1.2.3"
+// version is stamped from the git tag at release time (GoReleaser / Makefile
+// pass -ldflags "-X main.version=..."); "dev" marks an unstamped local build.
+var version = "dev"
 
 func main() {
 	app, err := newApp()

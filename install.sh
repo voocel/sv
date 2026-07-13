@@ -1,8 +1,9 @@
-#!/bin/bash
+#!/bin/sh
 # SV (Switch Version) Installer
 # https://github.com/voocel/sv
 #
 # Pretty Go Version Manager
+# POSIX sh — must run correctly via `curl ... | sh` (dash on Debian/Ubuntu).
 
 set -eu
 
@@ -60,12 +61,12 @@ setup_colors() {
     fi
 }
 
-# Logging functions
-log() { echo -e "${GREEN}info:${RESET} $*"; }
-warn() { echo -e "${YELLOW}warn:${RESET} $*"; }
-error() { echo -e "${RED}error:${RESET} $*" >&2; }
-info() { echo -e "${CYAN}$*${RESET}"; }
-step() { echo -e "${YELLOW}$*${RESET}"; }
+# Logging functions (printf, not echo -e — dash's echo prints "-e" literally)
+log() { printf '%b\n' "${GREEN}info:${RESET} $*"; }
+warn() { printf '%b\n' "${YELLOW}warn:${RESET} $*"; }
+error() { printf '%b\n' "${RED}error:${RESET} $*" >&2; }
+info() { printf '%b\n' "${CYAN}$*${RESET}"; }
+step() { printf '%b\n' "${YELLOW}$*${RESET}"; }
 
 # Error handling
 fatal() {
@@ -138,30 +139,27 @@ get_latest_version() {
     echo "$version"
 }
 
-# Download binary (keeping original download logic)
+# Download binary to a temp file first, so a failed download never leaves
+# a partial binary that blocks the "already installed" check on rerun.
 download_sv() {
-    local version="$1"
-    local svbin="$2"
-    local download_url="$DOWNLOAD_URL/$version/$svbin"
-    
+    version="$1"
+    svbin="$2"
+    download_url="$DOWNLOAD_URL/$version/$svbin"
+    tmp="$INSTALL_DIR/.sv.download"
+
     log "Downloading sv $version"
     info "URL: $download_url"
-    
-    # Ensure install directory exists
+
     mkdir -p "$INSTALL_DIR"
-    
-    # Download using wget (original method)
-    if command -v wget >/dev/null 2>&1; then
-        if ! wget "$download_url" -O "$INSTALL_DIR/sv"; then
-            fatal "Failed to download sv binary"
-        fi
+
+    if command -v curl >/dev/null 2>&1; then
+        curl -fSL --progress-bar "$download_url" -o "$tmp" || { rm -f "$tmp"; fatal "Failed to download sv binary"; }
     else
-        if ! curl -fsSL "$download_url" -o "$INSTALL_DIR/sv"; then
-            fatal "Failed to download sv binary"
-        fi
+        wget "$download_url" -O "$tmp" || { rm -f "$tmp"; fatal "Failed to download sv binary"; }
     fi
-    
-    chmod +x "$INSTALL_DIR/sv"
+
+    chmod +x "$tmp"
+    mv "$tmp" "$INSTALL_DIR/sv"
     log "Installed sv to $INSTALL_DIR/sv"
 }
 
@@ -197,19 +195,21 @@ ENVEOF
 
 # Shell detection
 get_shell_profile() {
-    if [[ "${SHELL}" == *"bash"* ]]; then
-        if [[ -f "$HOME/.bashrc" ]]; then
-            echo "$HOME/.bashrc"
-        elif [[ -f "$HOME/.bash_profile" ]]; then
-            echo "$HOME/.bash_profile"
-        else
-            echo "$HOME/.bashrc"
-        fi
-    elif [[ "${SHELL}" == *"zsh"* ]]; then
-        echo "${ZDOTDIR:-$HOME}/.zshrc"
-    else
-        echo "$HOME/.profile"
-    fi
+    case "${SHELL:-}" in
+        *bash*)
+            if [ -f "$HOME/.bash_profile" ] && [ ! -f "$HOME/.bashrc" ]; then
+                echo "$HOME/.bash_profile"
+            else
+                echo "$HOME/.bashrc"
+            fi
+            ;;
+        *zsh*)
+            echo "${ZDOTDIR:-$HOME}/.zshrc"
+            ;;
+        *)
+            echo "$HOME/.profile"
+            ;;
+    esac
 }
 
 # Set environment (original logic with improvements)
@@ -288,6 +288,11 @@ main() {
     else
         version="$SV_VERSION"
     fi
+    # Release tags carry a "v" prefix; accept "1.2.3" too
+    case "$version" in
+        v*) ;;
+        *) version="v$version" ;;
+    esac
     info "Version to install: $version"
 
     step "[2/4] Downloading sv binary"
@@ -340,8 +345,8 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-# Check if already installed
-if [ -d "${SV_HOME}" ] && [ -f "${SV_HOME}/bin/sv" ] && [ "$FORCE_INSTALL" != "1" ]; then
+# Check if already installed (SV_FORCE=1 matches the Windows installer)
+if [ -f "${SV_HOME}/bin/sv" ] && [ "$FORCE_INSTALL" != "1" ] && [ "${SV_FORCE:-0}" != "1" ]; then
     setup_colors
     warn "sv is already installed at ${SV_HOME}"
     warn "Use --force to reinstall, or delete the directory and reinstall"

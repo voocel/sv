@@ -94,21 +94,20 @@ function Install-SV {
 
     Write-Info "Downloading from: $downloadUrl"
 
+    # Download to a temp file first, so a failed download never leaves a
+    # partial binary that blocks the "already installed" check on rerun.
+    $tmpPath = "$binDir\.sv.download"
     try {
-        # Download with progress
         $ProgressPreference = 'SilentlyContinue'
-        Invoke-WebRequest -Uri $downloadUrl -OutFile $binPath -UseBasicParsing
+        Invoke-WebRequest -Uri $downloadUrl -OutFile $tmpPath -UseBasicParsing
         $ProgressPreference = 'Continue'
     } catch {
+        Remove-Item -Force $tmpPath -ErrorAction SilentlyContinue
         Write-Err "Failed to download sv: $_"
         exit 1
     }
 
-    # Verify download
-    if (-not (Test-Path $binPath)) {
-        Write-Err "Download failed: binary not found"
-        exit 1
-    }
+    Move-Item -Force $tmpPath $binPath
 
     Write-Success "Installed sv to $binPath"
 }
@@ -205,6 +204,8 @@ function Main {
 
     Write-Step "[1/4] Fetching sv latest version"
     $version = if ($SV_VERSION -eq "latest") { Get-LatestVersion } else { $SV_VERSION }
+    # Release tags carry a "v" prefix; accept "1.2.3" too
+    if ($version -notmatch '^v') { $version = "v$version" }
     Write-Info "Version to install: $version"
 
     Write-Step "[2/4] Downloading sv binary"

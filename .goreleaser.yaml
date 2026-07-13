@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+builds:
+  - binary: sv
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Tag }}
+
+# Publish raw binaries named exactly as install.sh / `sv self upgrade` expect:
+# sv-linux-amd64, sv-darwin-arm64, sv-windows-amd64.exe, ...
+archives:
+  - formats: [binary]
+    name_template: "sv-{{ .Os }}-{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  disable: true
+
+release:
+  github:
+    owner: voocel
+    name: sv
