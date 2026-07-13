@@ -229,6 +229,15 @@ $currentGoRoot = [System.Environment]::GetEnvironmentVariable('GOROOT', 'User')
 if ($currentGoRoot -eq $goRoot) {
     [System.Environment]::SetEnvironmentVariable('GOROOT', $null, 'User')
 }
+
+# Remove the sv alias the installer added to PowerShell profiles
+$docs = [Environment]::GetFolderPath('MyDocuments')
+foreach ($p in @("$docs\WindowsPowerShell\profile.ps1", "$docs\PowerShell\profile.ps1")) {
+    if (Test-Path $p) {
+        $lines = @(Get-Content $p) | Where-Object { $_ -notmatch 'Added by sv installer' }
+        Set-Content -Path $p -Value $lines
+    }
+}
 `, a.paths.Bin, a.paths.Root)
 
 	if err := exec.Command("powershell", "-NoProfile", "-Command", script).Run(); err != nil {

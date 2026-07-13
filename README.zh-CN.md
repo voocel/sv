@@ -27,6 +27,8 @@ irm https://raw.githubusercontent.com/voocel/sv/main/install.ps1 | iex
 ```
 
 > 安装完成后，请打开**新的终端窗口**使配置生效。
+>
+> PowerShell 提示：`sv` 是 PowerShell 内置的 `Set-Variable` 别名，会遮蔽 sv.exe。安装脚本已自动在你的 PowerShell profile 中覆盖该别名；cmd 和 Git Bash 无需任何处理。
 
 ## 🔥 功能
 - 列出本地或远程所有版本（输入 `/` 可过滤）

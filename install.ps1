@@ -156,6 +156,33 @@ function Set-Environment {
     $env:PATH = "$binDir;$goRoot\bin;$env:PATH"
     $env:GOROOT = $goRoot
     if (-not $env:GOPATH) { $env:GOPATH = $goPath }
+
+    Set-SvAlias
+}
+
+function Set-SvAlias {
+    # PowerShell ships a built-in ReadOnly alias `sv` -> Set-Variable, and
+    # aliases take precedence over executables on PATH. Point it at sv.exe
+    # in the user's profiles so plain `sv` works in PowerShell too.
+    $binPath = "$SV_HOME\bin\sv.exe"
+    $aliasLine = "Set-Alias -Name sv -Value '$binPath' -Option AllScope -Force # Added by sv installer"
+    $docs = [Environment]::GetFolderPath('MyDocuments')
+    $profiles = @("$docs\WindowsPowerShell\profile.ps1", "$docs\PowerShell\profile.ps1")
+
+    foreach ($profilePath in $profiles) {
+        $dir = Split-Path $profilePath
+        if (-not (Test-Path $dir)) {
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        }
+        if ((Test-Path $profilePath) -and (Select-String -Path $profilePath -SimpleMatch "Added by sv installer" -Quiet)) {
+            continue
+        }
+        Add-Content -Path $profilePath -Value $aliasLine
+    }
+    Write-Success "Configured PowerShell alias (built-in 'sv' would shadow sv.exe)"
+
+    # Make `sv` work in the current session as well
+    Set-Alias -Name sv -Value $binPath -Option AllScope -Force -Scope Global
 }
 
 function Test-Installation {

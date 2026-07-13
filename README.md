@@ -27,6 +27,8 @@ irm https://raw.githubusercontent.com/voocel/sv/main/install.ps1 | iex
 ```
 
 > After installation, open a **new terminal** for the changes to take effect.
+>
+> PowerShell note: `sv` is a built-in PowerShell alias for `Set-Variable`, which would shadow sv.exe. The installer overrides it in your PowerShell profile automatically; cmd and Git Bash need nothing.
 
 ## 🔥 Features
 - List local or remote all versions (type `/` to filter)
