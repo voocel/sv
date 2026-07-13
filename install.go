@@ -180,7 +180,10 @@ func (a *App) printGoVersion() error {
 	if p := os.Getenv("PATH"); p != "" {
 		path += string(filepath.ListSeparator) + p
 	}
-	cmd.Env = dedupEnv(append(os.Environ(), "GOROOT="+a.paths.Root, "PATH="+path))
+	// GOTOOLCHAIN=local reports the linked toolchain itself; otherwise a
+	// go.mod in the working directory could auto-select a different one.
+	cmd.Env = dedupEnv(append(os.Environ(),
+		"GOROOT="+a.paths.Root, "PATH="+path, "GOTOOLCHAIN=local"))
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("run go version: %w", err)
