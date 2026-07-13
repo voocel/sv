@@ -52,7 +52,7 @@ func (a *App) selfUpgrade(ctx context.Context, force bool) error {
 	}
 
 	infof("upgrading to %s (%s)", release.TagName, asset.Name)
-	if err := a.replaceSelf(ctx, asset); err != nil {
+	if err := a.replaceSelf(ctx, asset, "sv "+release.TagName); err != nil {
 		return err
 	}
 	successf("upgraded to %s", release.TagName)
@@ -67,10 +67,10 @@ func (a *App) fetchLatestSelf(ctx context.Context) (*ghRelease, error) {
 	return &release, nil
 }
 
-func (a *App) replaceSelf(ctx context.Context, asset *ghAsset) error {
+func (a *App) replaceSelf(ctx context.Context, asset *ghAsset, label string) error {
 	tmp := filepath.Join(a.paths.Bin, ".sv.tmp")
 	dl := newDownloader(a.client)
-	if err := dl.fetchSingle(ctx, asset.BrowserDownloadURL, tmp, asset.Size, cyan("sv[upgrade]")); err != nil {
+	if err := dl.fetchSingle(ctx, asset.BrowserDownloadURL, tmp, asset.Size, label); err != nil {
 		os.Remove(tmp)
 		return fmt.Errorf("download %s: %w", asset.Name, err)
 	}

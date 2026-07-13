@@ -59,7 +59,8 @@ func (a *App) installRelease(ctx context.Context, release *GoRelease) error {
 
 	archive := filepath.Join(a.paths.Downloads, file.Filename)
 	dl := newDownloader(a.client)
-	label := cyan("sv[" + release.Version + "]")
+	// Plain label: the bar colors it and needs its visible width for layout.
+	label := release.Version
 
 	// Download and verify as one retryable unit: a corrupt archive is
 	// deleted so the next attempt starts clean, while partial part files
@@ -184,7 +185,32 @@ func (a *App) printGoVersion() error {
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("run go version: %w", err)
 	}
+	a.warnIfShadowed()
 	return nil
+}
+
+// warnIfShadowed reports when `go` on the user's PATH resolves outside sv's
+// toolchain — e.g. a system-wide install whose PATH entry precedes ours.
+func (a *App) warnIfShadowed() {
+	found, err := exec.LookPath("go")
+	if err != nil {
+		return
+	}
+	want := filepath.Join(a.paths.Root, "bin", "go")
+	if runtime.GOOS == "windows" {
+		want += ".exe"
+	}
+	if !samePath(found, want) {
+		warnf("'go' in PATH resolves to %s — it shadows sv; remove that directory from PATH", found)
+	}
+}
+
+func samePath(p, q string) bool {
+	p, q = filepath.Clean(p), filepath.Clean(q)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(p, q)
+	}
+	return p == q
 }
 
 // removeVersion deletes an installed version; the active one is protected.

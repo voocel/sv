@@ -98,9 +98,14 @@ function Install-SV {
     # partial binary that blocks the "already installed" check on rerun.
     $tmpPath = "$binDir\.sv.download"
     try {
-        $ProgressPreference = 'SilentlyContinue'
-        Invoke-WebRequest -Uri $downloadUrl -OutFile $tmpPath -UseBasicParsing
-        $ProgressPreference = 'Continue'
+        if (Get-Command curl.exe -ErrorAction SilentlyContinue) {
+            # Real curl (ships with Windows 10 1803+): fast and shows a clean
+            # progress bar. Invoke-WebRequest is slow with progress enabled.
+            & curl.exe -fSL --progress-bar -o $tmpPath $downloadUrl
+            if ($LASTEXITCODE -ne 0) { throw "curl.exe exited with code $LASTEXITCODE" }
+        } else {
+            Invoke-WebRequest -Uri $downloadUrl -OutFile $tmpPath -UseBasicParsing
+        }
     } catch {
         Remove-Item -Force $tmpPath -ErrorAction SilentlyContinue
         Write-Err "Failed to download sv: $_"

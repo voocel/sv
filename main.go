@@ -5,7 +5,7 @@ import (
 	"errors"
 	"os"
 
-	"github.com/charmbracelet/huh"
+	"charm.land/huh/v2"
 	"github.com/urfave/cli/v3"
 )
 

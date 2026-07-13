@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/charmbracelet/huh"
+	"charm.land/huh/v2"
 )
 
 // Minimal ANSI palette — the whole of sv's styling.
@@ -14,6 +14,7 @@ func red(s string) string    { return paint("31", s) }
 func green(s string) string  { return paint("32", s) }
 func yellow(s string) string { return paint("33", s) }
 func cyan(s string) string   { return paint("36", s) }
+func gray(s string) string   { return paint("90", s) }
 
 func successf(format string, a ...any) { fmt.Println(green(fmt.Sprintf(format, a...))) }
 func infof(format string, a ...any)    { fmt.Println(cyan(fmt.Sprintf(format, a...))) }
@@ -23,13 +24,16 @@ func errorf(format string, a ...any)   { fmt.Fprintln(os.Stderr, red(fmt.Sprintf
 // selectPrompt asks the user to pick one of options; type "/" to filter.
 func selectPrompt(title string, options []string) (string, error) {
 	var picked string
-	err := huh.NewSelect[string]().
+	sel := huh.NewSelect[string]().
 		Title(title).
 		Options(huh.NewOptions(options...)...).
-		Height(15).
-		Value(&picked).
-		Run()
-	return picked, err
+		Value(&picked)
+	// Cap the window for long lists; short lists render at natural height
+	// (a fixed Height would draw the field border at full height).
+	if len(options) > 15 {
+		sel = sel.Height(15)
+	}
+	return picked, sel.Run()
 }
 
 func confirmPrompt(title string) (bool, error) {

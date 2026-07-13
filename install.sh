@@ -261,7 +261,7 @@ print_success() {
     info "${GREEN}${BOLD}sv has been successfully installed!${RESET}"
     info ""
     info "To get started:"
-    info "  1. Restart your shell or run: source $(get_shell_profile)"
+    info "  1. Restart your shell or run: . \"\$HOME/.sv/env\""
     info "  2. Run: sv list"
     info "  3. Install Go: sv install --latest"
     info ""
